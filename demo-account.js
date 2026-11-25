@@ -1,3 +1,4 @@
+import { checkAdminAccess } from './admin-access.js';
 import { authClient, getCurrentMember, authError } from './auth-client.js';
 import { organizeTrips, tripGroups } from './trip-order.js';
 import { tripReadiness } from './trip-readiness.js';
@@ -20,6 +21,8 @@ let refreshSavedGroups = () => {};
 let tripStateVersion = 0;
 async function showTripState() {
   const version = ++tripStateVersion;
+  const adminLink = document.getElementById('admin-entry');
+  adminLink.hidden = true;
   try {
     const current = await getCurrentMember();
     if (version !== tripStateVersion) return;
@@ -29,6 +32,12 @@ async function showTripState() {
       : signedIn ? '로그인했어요. 로그인 화면에서 하루픽 닉네임 등록을 마무리해 주세요.' : '로그인 없이도 일정을 만들 수 있어요.';
     document.getElementById('trip-login').hidden = Boolean(current?.profile);
     logoutButton.hidden = !signedIn;
+    if (signedIn) {
+      try {
+        const access = await checkAdminAccess();
+        if (version === tripStateVersion) adminLink.hidden = access.state !== 'allowed';
+      } catch { if (version === tripStateVersion) adminLink.hidden = true; }
+    }
   } catch (error) {
     if (version !== tripStateVersion) return;
     document.getElementById('trip-status').textContent = authError(error);
@@ -316,7 +325,7 @@ if (logoutButton) {
   setupTripBackup(renderSavedTrips);
   renderSavedTrips();
   showTripState();
-  authClient.auth.onAuthStateChange(() => { setTimeout(showTripState, 0); });
+  authClient.auth.onAuthStateChange(() => { document.getElementById('admin-entry').hidden = true; setTimeout(showTripState, 0); });
   window.addEventListener('pageshow', event => { if (event.persisted) showTripState(); });
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) { renderTodayTrips(); refreshSavedGroups(); }

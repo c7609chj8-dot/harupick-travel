@@ -12,7 +12,8 @@ function busy(form, fieldset, enabled) {
 }
 function nextPage() {
   const next = new URLSearchParams(location.search).get('next');
-  location.assign(next === 'courses' ? './index.html?view=courses#results' : './my-trip.html');
+  const destination = next === 'admin' ? './admin.html' : next === 'courses' ? './index.html?view=courses#results' : './my-trip.html';
+  location.assign(destination);
 }
 function showMemberSetup() {
   $('member-setup').hidden = false;

@@ -85,3 +85,64 @@ revoke all on function harupick_private.create_member_after_signup() from public
 create trigger harupick_create_member_after_signup
 after insert on auth.users
 for each row execute function harupick_private.create_member_after_signup();
+
+-- Day 1: administrator roles and live-session access checks.
+create table public.harupick_administrators (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  is_active boolean not null default true,
+  granted_at timestamptz not null default now()
+);
+comment on table public.harupick_administrators is '하루픽 관리자 권한. 인증된 운영 도구에서만 부여 및 회수할 수 있습니다.';
+alter table public.harupick_administrators enable row level security;
+revoke all on table public.harupick_administrators from public, anon, authenticated;
+grant select on table public.harupick_administrators to authenticated;
+grant all on table public.harupick_administrators to service_role;
+create policy harupick_admin_read_own
+on public.harupick_administrators for select to authenticated
+using ((select auth.uid()) = user_id);
+
+create function harupick_private.is_current_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $function$
+  select exists (
+    select 1
+    from public.harupick_administrators a
+    join auth.users u on u.id = a.user_id
+    join auth.sessions s on s.user_id = u.id
+      and s.id = nullif((select auth.jwt())->>'session_id', '')::uuid
+    where a.user_id = (select auth.uid())
+      and a.is_active
+      and u.email_confirmed_at is not null
+      and u.deleted_at is null
+      and (u.banned_until is null or u.banned_until <= now())
+      and (s.not_after is null or s.not_after > now())
+  );
+$function$;
+revoke all on function harupick_private.is_current_admin() from public, anon;
+grant usage on schema harupick_private to authenticated;
+grant execute on function harupick_private.is_current_admin() to authenticated;
+
+create function public.harupick_admin_context()
+returns jsonb
+language plpgsql
+stable
+security invoker
+set search_path = ''
+as $function$
+begin
+  if not harupick_private.is_current_admin() then
+    raise exception 'Administrator access required' using errcode = '42501';
+  end if;
+  return jsonb_build_object(
+    'user_id', (select auth.uid()),
+    'role', 'admin',
+    'capabilities', jsonb_build_array('access_admin_console')
+  );
+end;
+$function$;
+revoke all on function public.harupick_admin_context() from public, anon;
+grant execute on function public.harupick_admin_context() to authenticated;
