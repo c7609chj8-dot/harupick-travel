@@ -1,3 +1,4 @@
+import { setupMemberDirectory } from './admin-members-ui.js';
 import { authClient } from './auth-client.js';
 import { checkAdminAccess } from './admin-access.js';
 import { createAdminGuard } from './admin-guard.js';
@@ -10,8 +11,10 @@ const copy = {
   denied: ['관리자 권한이 없습니다', '현재 계정으로는 관리자 화면에 접근할 수 없습니다.'],
   error: ['권한을 확인하지 못했습니다', '연결 상태를 확인하고 다시 시도해 주세요.']
 };
+const directory = setupMemberDirectory(state => guard.invalidate(state));
 const guard = createAdminGuard({ check: checkAdminAccess, onState(result) {
   panel.hidden = true;
+  directory.deactivate({ clearSearch: !['checking', 'allowed'].includes(result.state) });
   $('admin-email').textContent = '';
   gate.hidden = false;
   if (result.state === 'allowed') {
@@ -19,6 +22,7 @@ const guard = createAdminGuard({ check: checkAdminAccess, onState(result) {
     $('admin-checked-at').textContent = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
     gate.hidden = true;
     panel.hidden = false;
+    directory.activate();
     return;
   }
   const state = copy[result.state] ? result.state : 'error';

@@ -146,3 +146,89 @@ end;
 $function$;
 revoke all on function public.harupick_admin_context() from public, anon;
 grant execute on function public.harupick_admin_context() to authenticated;
+
+-- Day 2: bounded, read-only administrator member directory.
+create index harupick_members_created_id_idx on public.harupick_members (created_at desc, id desc);
+
+create function harupick_private.admin_members(p_query text, p_page integer, p_page_size integer)
+returns jsonb language plpgsql stable security definer set search_path = ''
+as $function$
+declare
+  search_text text := lower(btrim(coalesce(p_query, '')));
+  member_count bigint;
+  current_page integer;
+  page_count integer;
+  rows_json jsonb;
+begin
+  if not harupick_private.is_current_admin() then
+    raise exception 'Administrator access required' using errcode = '42501';
+  end if;
+  if char_length(search_text) > 100 or p_page is null or p_page < 1 or p_page > 1000000
+     or p_page_size is null or p_page_size < 1 or p_page_size > 50 then
+    raise exception 'Invalid directory parameters' using errcode = '22023';
+  end if;
+  select count(*) into member_count
+  from public.harupick_members m join auth.users u on u.id = m.id
+  where search_text = '' or strpos(lower(m.nickname), search_text) > 0
+    or strpos(lower(coalesce(u.email, '')), search_text) > 0;
+  page_count := greatest(1, ceil(member_count::numeric / p_page_size)::integer);
+  current_page := least(p_page, page_count);
+  select coalesce(jsonb_agg(to_jsonb(r) order by r.created_at desc, r.id desc), '[]'::jsonb) into rows_json
+  from (
+    select m.id, m.nickname, u.email, m.created_at,
+      u.email_confirmed_at is not null as email_confirmed,
+      case when u.deleted_at is not null then 'deleted'
+        when u.banned_until > now() then 'suspended'
+        when u.email_confirmed_at is null then 'unconfirmed' else 'active' end as status
+    from public.harupick_members m join auth.users u on u.id = m.id
+    where search_text = '' or strpos(lower(m.nickname), search_text) > 0
+      or strpos(lower(coalesce(u.email, '')), search_text) > 0
+    order by m.created_at desc, m.id desc
+    limit p_page_size offset ((current_page - 1)::bigint * p_page_size)
+  ) r;
+  return jsonb_build_object('members', rows_json, 'total', member_count,
+    'page', current_page, 'page_size', p_page_size, 'pages', page_count);
+end;
+$function$;
+revoke all on function harupick_private.admin_members(text, integer, integer) from public, anon;
+grant execute on function harupick_private.admin_members(text, integer, integer) to authenticated;
+
+create function harupick_private.admin_member(p_member_id uuid)
+returns jsonb language plpgsql stable security definer set search_path = ''
+as $function$
+declare member_json jsonb;
+begin
+  if not harupick_private.is_current_admin() then
+    raise exception 'Administrator access required' using errcode = '42501';
+  end if;
+  select jsonb_build_object(
+    'id', m.id, 'nickname', m.nickname, 'email', u.email,
+    'created_at', m.created_at, 'updated_at', m.updated_at,
+    'email_confirmed_at', u.email_confirmed_at, 'last_sign_in_at', u.last_sign_in_at,
+    'status', case when u.deleted_at is not null then 'deleted'
+      when u.banned_until > now() then 'suspended'
+      when u.email_confirmed_at is null then 'unconfirmed' else 'active' end
+  ) into member_json
+  from public.harupick_members m join auth.users u on u.id = m.id
+  where m.id = p_member_id;
+  return member_json;
+end;
+$function$;
+revoke all on function harupick_private.admin_member(uuid) from public, anon;
+grant execute on function harupick_private.admin_member(uuid) to authenticated;
+
+create function public.harupick_admin_members(p_query text default '', p_page integer default 1, p_page_size integer default 20)
+returns jsonb language sql stable security invoker set search_path = ''
+as $function$
+  select harupick_private.admin_members(p_query, p_page, p_page_size);
+$function$;
+revoke all on function public.harupick_admin_members(text, integer, integer) from public, anon;
+grant execute on function public.harupick_admin_members(text, integer, integer) to authenticated;
+
+create function public.harupick_admin_member(p_member_id uuid)
+returns jsonb language sql stable security invoker set search_path = ''
+as $function$
+  select harupick_private.admin_member(p_member_id);
+$function$;
+revoke all on function public.harupick_admin_member(uuid) from public, anon;
+grant execute on function public.harupick_admin_member(uuid) to authenticated;
