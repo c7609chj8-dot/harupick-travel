@@ -1,13 +1,4 @@
-export const sessionKey = 'harupick-demo-login';
 export const savedKey = 'harupick-demo-saved-courses';
-
-export function isDemoSignedIn() {
-  try {
-    return sessionStorage.getItem(sessionKey) === 'active';
-  } catch {
-    return false;
-  }
-}
 
 export function savedCourseIds() {
   try {

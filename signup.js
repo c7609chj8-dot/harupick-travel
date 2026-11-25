@@ -1,3 +1,4 @@
+import { registerMember, authError } from './auth-client.js';
 const form = document.getElementById('signup-form');
 const fields = document.getElementById('signup-fields');
 const feedback = document.getElementById('form-feedback');
@@ -76,8 +77,10 @@ for (const button of document.querySelectorAll('.password-toggle')) {
   });
 }
 
-form.addEventListener('submit', event => {
+let pending = false;
+form.addEventListener('submit', async event => {
   event.preventDefault();
+  if (pending) return;
   submitted = true;
   nickname.value = nickname.value.trim();
   email.value = email.value.trim();
@@ -88,14 +91,35 @@ form.addEventListener('submit', event => {
     inputs[valid.indexOf(false)].focus();
     return;
   }
-  // This is a UI-only demo: do not send, persist, or log personal information.
-  form.reset();
-  resetVisibility();
-  form.hidden = true;
-  document.getElementById('signup-intro').hidden = true;
-  success.hidden = false;
+  pending = true;
+  fields.disabled = true;
+  form.setAttribute('aria-busy', 'true');
+  const submitButton = document.getElementById('signup-submit');
+  submitButton.textContent = '가입 처리 중…';
   feedback.textContent = '';
-  document.getElementById('success-title').focus();
+  try {
+    const result = await registerMember({ nickname: nickname.value, email: email.value, password: password.value });
+    form.reset();
+    resetVisibility();
+    form.hidden = true;
+    document.getElementById('signup-intro').hidden = true;
+    success.hidden = false;
+    document.getElementById('success-title').textContent = result.signedIn ? '회원가입이 완료됐어요' : '이메일을 확인해 주세요';
+    document.getElementById('signup-result-message').textContent = result.signedIn
+      ? '회원 정보가 저장됐어요. 이제 하루픽에 로그인한 상태로 여행을 준비할 수 있습니다.'
+      : '받은 메일의 인증 링크를 눌러 가입을 완료해 주세요. 스팸함도 확인해 주세요. 이미 가입한 이메일이라면 기존 계정으로 로그인하세요.';
+    const nextLink = document.getElementById('signup-next');
+    nextLink.href = result.signedIn ? './my-trip.html' : './login.html';
+    nextLink.textContent = result.signedIn ? '내 여행으로 이동' : '로그인으로 이동';
+    document.getElementById('success-title').focus();
+  } catch (error) {
+    feedback.textContent = authError(error);
+  } finally {
+    pending = false;
+    fields.disabled = false;
+    form.removeAttribute('aria-busy');
+    submitButton.textContent = '회원가입';
+  }
 });
 
 document.getElementById('signup-again').addEventListener('click', () => {

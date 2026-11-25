@@ -1,3 +1,4 @@
+import { authClient, getCurrentMember, authError } from './auth-client.js';
 import { organizeTrips, tripGroups } from './trip-order.js';
 import { tripReadiness } from './trip-readiness.js';
 import { dayModeLink, renderTodayTrips, todayInKorea, tripCardId } from './today-trips.js';
@@ -10,23 +11,30 @@ import { rainAlternative } from './rain-alternatives.js';
 import { courseTransport } from './course-transport.js';
 import { itineraryEditor, itineraryStopText, readItinerary } from './itinerary.js';
 import { duplicateTrip, findTrip, savedTrips } from './trip-records.js';
-import { isDemoSignedIn, sessionKey, savedCourseIds, setCourseSaved } from './demo-storage.js';
-const loginButton = document.getElementById('demo-login');
+import { savedCourseIds, setCourseSaved } from './demo-storage.js';
 const logoutButton = document.getElementById('demo-logout');
-const resetForm = document.getElementById('demo-reset');
 
 let activeCourseId = new URLSearchParams(location.search).get('course');
 let refreshSavedGroups = () => {};
 
-function showTripState() {
-  const signedIn = isDemoSignedIn();
-  document.getElementById('trip-status').textContent = signedIn
-    ? '체험 계정으로 로그인했어요.'
-    : '로그인 없이 일정을 만들 수 있어요.';
-  document.getElementById('trip-login').hidden = signedIn;
-  logoutButton.hidden = !signedIn;
-  document.getElementById('saved-feedback').textContent = '';
-  renderSavedTrips();
+let tripStateVersion = 0;
+async function showTripState() {
+  const version = ++tripStateVersion;
+  try {
+    const current = await getCurrentMember();
+    if (version !== tripStateVersion) return;
+    const signedIn = Boolean(current?.user);
+    document.getElementById('trip-status').textContent = current?.profile
+      ? current.profile.nickname + '님으로 로그인했어요.'
+      : signedIn ? '로그인했어요. 로그인 화면에서 하루픽 닉네임 등록을 마무리해 주세요.' : '로그인 없이도 일정을 만들 수 있어요.';
+    document.getElementById('trip-login').hidden = Boolean(current?.profile);
+    logoutButton.hidden = !signedIn;
+  } catch (error) {
+    if (version !== tripStateVersion) return;
+    document.getElementById('trip-status').textContent = authError(error);
+    document.getElementById('trip-login').hidden = false;
+    logoutButton.hidden = true;
+  }
 }
 
 function renderSavedTrips() {
@@ -304,46 +312,23 @@ function renderSavedTrips() {
   refreshSavedGroups();
 }
 
-if (loginButton) {
-  loginButton.disabled = false;
-  loginButton.addEventListener('click', () => {
-    try {
-      sessionStorage.setItem(sessionKey, 'active');
-    } catch {
-      document.getElementById('demo-login-status').textContent = '브라우저에서 탭 저장을 허용하면 체험 로그인할 수 있어요.';
-      return;
-    }
-    const next = new URLSearchParams(location.search).get('next');
-    location.assign(next === 'courses' ? './index.html?view=courses#results' : './my-trip.html');
-  });
-}
-
 if (logoutButton) {
   setupTripBackup(renderSavedTrips);
+  renderSavedTrips();
   showTripState();
+  authClient.auth.onAuthStateChange(() => { setTimeout(showTripState, 0); });
   window.addEventListener('pageshow', event => { if (event.persisted) showTripState(); });
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
-      renderTodayTrips();
-      refreshSavedGroups();
-    }
+    if (!document.hidden) { renderTodayTrips(); refreshSavedGroups(); }
   });
-  logoutButton.addEventListener('click', () => {
+  logoutButton.addEventListener('click', async () => {
+    logoutButton.disabled = true;
     try {
-      sessionStorage.removeItem(sessionKey);
-    } catch {
-      document.getElementById('trip-status').textContent = '체험 로그인 상태를 지울 수 없어요. 이 탭을 닫아 주세요.';
-      return;
-    }
-    showTripState();
-    document.getElementById('trip-login').focus();
-  });
-}
-
-if (resetForm) {
-  document.getElementById('reset-fields').disabled = false;
-  resetForm.addEventListener('submit', event => {
-    event.preventDefault();
-    document.getElementById('reset-status').textContent = '재설정 요청 체험이 완료됐어요. 계정 연결 후에는 이 단계에서 재설정 링크가 이메일로 발송됩니다.';
+      const { error } = await authClient.auth.signOut({ scope: 'local' });
+      if (error) throw error;
+      await showTripState();
+      document.getElementById('trip-login').focus();
+    } catch (error) { document.getElementById('trip-status').textContent = authError(error); }
+    finally { logoutButton.disabled = false; }
   });
 }
