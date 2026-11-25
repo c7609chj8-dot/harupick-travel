@@ -5,13 +5,14 @@ import { data } from './travel-data.js';
 import { savedCourseIds } from './demo-storage.js';
 
 const cities = [...new Set(data.map(item => item.city))];
+const featuredCourseIds = new Set(cities.map(city => data.find(item => item.city === city && item.type === 4)?.id));
 const types = ['전체', '여행지', '교통편', '숙소', '추천 코스'];
-const icons = ['','⌖','🚆','🛏','🧭'];
+const cityImages = { '부산':'busan', '경주':'gyeongju', '제주':'jeju', '강릉':'gangneung' };
 const $ = id => document.getElementById(id);
 const region = $('region');
 const keyword = $('keyword');
 const initialView = new URLSearchParams(window.location.search).get('view');
-const initialType = new Map([['stays', 3], ['courses', 4]]).get(initialView) ?? 0;
+const initialType = new Map([['all', 0], ['places', 1], ['transport', 2], ['stays', 3], ['courses', 4]]).get(initialView) ?? 4;
 let selection = { city:'', query:'', type:initialType };
 const activeConditions = new Set();
 const courseConditions = [
@@ -56,10 +57,19 @@ $('clear-course-conditions').addEventListener('click', () => {
 function applySearch() {
   selection.city = region.value;
   selection.query = keyword.value.trim().toLocaleLowerCase('ko');
-  if (selection.type !== 4) selection.type = 0;
   render();
 }
-$('search-form').addEventListener('submit', event => {event.preventDefault(); applySearch();});
+$('search-form').addEventListener('submit', event => {event.preventDefault(); applySearch(); $('results').scrollIntoView({block:'start'});});
+document.querySelectorAll('[data-city]').forEach(button => {
+  button.addEventListener('click', () => {
+    selection.type = 4;
+    region.value = button.dataset.city;
+    keyword.value = '';
+    activeConditions.clear();
+    applySearch();
+    $('results').scrollIntoView({block:'start'});
+  });
+});
 region.addEventListener('change', applySearch);
 $('course-nav').addEventListener('click', () => {
   selection = {city:'',query:'',type:4};
@@ -77,10 +87,18 @@ function element(tag, content, className) {
 }
 
 function card({id,city,type,title,body,profile,url,link}) {
-  const article = element('article','','card');
-  const icon = element('span',icons[type],'icon');
-  icon.setAttribute('aria-hidden','true');
-  article.append(icon,element('p',city+' · '+types[type],'meta'),element('h3',title));
+  const wrapper = element('article','','card');
+  const visual = element('div','','card-image');
+  const image = document.createElement('img');
+  image.src = './assets/' + cityImages[city] + '.jpg';
+  image.alt = city + ' 여행 풍경';
+  image.width = 640;
+  image.height = 400;
+  image.loading = 'lazy';
+  visual.append(image, element('span', types[type], 'card-badge'));
+  const article = element('div','','card-body');
+  wrapper.append(visual, article);
+  article.append(element('p',city+' · '+types[type],'meta'),element('h3',title));
   if (profile) {
     const summary = element('p', '', 'course-profile');
     const labels = [profile.duration, profile.mode, '걷기 ' + profile.walking];
@@ -102,7 +120,7 @@ function card({id,city,type,title,body,profile,url,link}) {
   if (type === 4) {
     const actions = element('div','','card-actions');
     const saved = savedCourseIds().includes(id);
-    const plan = element('a', saved ? '내 일정 이어서 편집' : '이 코스로 일정 만들기', 'course-plan');
+    const plan = element('a', saved ? '내 일정 이어서 편집' : '이 코스로 내 일정 만들기', 'course-plan');
     plan.href = './my-trip.html?' + new URLSearchParams({ course: id });
     plan.setAttribute('aria-label', title + ' ' + plan.textContent);
     actions.append(plan, anchor);
@@ -119,7 +137,7 @@ function card({id,city,type,title,body,profile,url,link}) {
       if (comparison) article.append(comparison);
     }
   }
-  return article;
+  return wrapper;
 }
 
 function render() {
@@ -140,6 +158,7 @@ function render() {
       words.every(word => haystack.includes(word)) &&
       requirements.every(condition => item.profile && condition.matches(item.profile));
   });
+  if (showingCourses) results.sort((a, b) => Number(featuredCourseIds.has(b.id)) - Number(featuredCourseIds.has(a.id)));
   $('summary').textContent = (selection.city || '전체 지역')+' · '+results.length+'건';
   $('cards').replaceChildren(...(results.length ? results.map(card) :
     [element('p', requirements.length
