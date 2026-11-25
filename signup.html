@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>회원가입 | 여행 하루픽</title>
+<link rel="stylesheet" href="./account.css">
+<script type="module" src="./signup.js"></script>
+</head>
+<body>
+<header><div class="wrap"><a class="brand" href="./index.html"><span aria-hidden="true">✧</span>여행 하루픽</a><nav aria-label="주 메뉴"><a href="./index.html">여행 검색</a><a href="./my-trip.html">내 여행</a><a href="./login.html">로그인</a><a href="./signup.html" aria-current="page">회원가입</a></nav></div></header>
+<main class="panel">
+<h1>회원가입</h1>
+
+<p>여행 하루픽 계정을 만들어 마음에 드는 코스를 모아보세요.</p>
+<p class="notice" id="account-status" role="status">회원가입 체험 화면입니다. 입력한 정보는 전송하거나 저장하지 않아요.</p>
+<form id="signup-form" aria-describedby="account-status">
+<fieldset id="signup-fields" disabled>
+<legend class="sr-only">가입 정보</legend>
+<label>닉네임<input id="nickname" type="text" autocomplete="nickname" minlength="2" maxlength="30" required></label>
+<label>이메일<input id="email" type="email" autocomplete="email" maxlength="254" required></label>
+<label>비밀번호<input id="password" type="password" autocomplete="new-password" minlength="8" maxlength="72" required aria-describedby="password-help"></label>
+<small id="password-help">비밀번호는 8자 이상으로 입력하세요.</small>
+<label>비밀번호 확인<input id="confirmation" type="password" autocomplete="new-password" required></label>
+<button type="submit">가입 체험하기</button>
+</fieldset>
+</form>
+<noscript><p>가입 화면을 체험하려면 자바스크립트를 켜 주세요.</p></noscript>
+<p class="switch">이미 계정이 있나요? <a href="./login.html">로그인</a></p>
+</main>
+</body>
+</html>

@@ -1,0 +1,150 @@
+import { rainAlternative } from './rain-alternatives.js';
+import { stayComparison } from './stay-comparison.js';
+import { courseTransport } from './course-transport.js';
+import { data } from './travel-data.js';
+import { savedCourseIds } from './demo-storage.js';
+
+const cities = [...new Set(data.map(item => item.city))];
+const types = ['전체', '여행지', '교통편', '숙소', '추천 코스'];
+const icons = ['','⌖','🚆','🛏','🧭'];
+const $ = id => document.getElementById(id);
+const region = $('region');
+const keyword = $('keyword');
+const initialView = new URLSearchParams(window.location.search).get('view');
+const initialType = new Map([['stays', 3], ['courses', 4]]).get(initialView) ?? 0;
+let selection = { city:'', query:'', type:initialType };
+const activeConditions = new Set();
+const courseConditions = [
+  { label:'반나절', matches:profile => profile.duration === '반나절' },
+  { label:'차 없이', matches:profile => profile.carFree === true },
+  { label:'걷기 적게', matches:profile => profile.walking === '적음' },
+  { label:'실내 위주', matches:profile => profile.indoor === true }
+];
+
+function addButton(parent, label, className, handler) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = className;
+  button.textContent = label;
+  button.addEventListener('click', handler);
+  parent.append(button);
+  return button;
+}
+
+const cityButtons = cities.map(city => addButton($('cities'),city,'chip',() => {
+  region.value = selection.city === city ? '' : city;
+  applySearch();
+}));
+const typeButtons = types.map((type,index) => addButton($('filters'),type,'filter',() => {
+  selection.type = index;
+  render();
+}));
+
+const conditionButtons = courseConditions.map(condition =>
+  addButton($('course-condition-buttons'), condition.label, 'chip', () => {
+    if (activeConditions.has(condition)) activeConditions.delete(condition);
+    else activeConditions.add(condition);
+    render();
+  })
+);
+$('clear-course-conditions').addEventListener('click', () => {
+  activeConditions.clear();
+  render();
+  conditionButtons[0].focus();
+});
+
+function applySearch() {
+  selection.city = region.value;
+  selection.query = keyword.value.trim().toLocaleLowerCase('ko');
+  if (selection.type !== 4) selection.type = 0;
+  render();
+}
+$('search-form').addEventListener('submit', event => {event.preventDefault(); applySearch();});
+region.addEventListener('change', applySearch);
+$('course-nav').addEventListener('click', () => {
+  selection = {city:'',query:'',type:4};
+  activeConditions.clear();
+  region.value = '';
+  keyword.value = '';
+  render();
+});
+
+function element(tag, content, className) {
+  const node = document.createElement(tag);
+  node.textContent = content;
+  if(className) node.className = className;
+  return node;
+}
+
+function card({id,city,type,title,body,profile,url,link}) {
+  const article = element('article','','card');
+  const icon = element('span',icons[type],'icon');
+  icon.setAttribute('aria-hidden','true');
+  article.append(icon,element('p',city+' · '+types[type],'meta'),element('h3',title));
+  if (profile) {
+    const summary = element('p', '', 'course-profile');
+    const labels = [profile.duration, profile.mode, '걷기 ' + profile.walking];
+    summary.append(...labels.map(label => element('span', label)));
+    article.append(summary);
+  }
+  if(Array.isArray(body)) {
+    const list = element('ol','','course');
+    list.append(...body.map(step => element('li',step)));
+    article.append(list);
+  } else {
+    article.append(element('p',body,'desc'));
+  }
+  const anchor = element('a',link);
+  anchor.href = url;
+  anchor.target = '_blank';
+  anchor.rel = 'noopener noreferrer';
+  anchor.setAttribute('aria-label',title+' '+link+' (새 탭)');
+  if (type === 4) {
+    const actions = element('div','','card-actions');
+    const saved = savedCourseIds().includes(id);
+    const plan = element('a', saved ? '내 일정 이어서 편집' : '이 코스로 일정 만들기', 'course-plan');
+    plan.href = './my-trip.html?' + new URLSearchParams({ course: id });
+    plan.setAttribute('aria-label', title + ' ' + plan.textContent);
+    actions.append(plan, anchor);
+    if (body.some((_, index) => rainAlternative({id}, index))) {
+      article.append(element('p','일정 편집에서 야외 장소를 실내로 바꿀 수 있어요.','desc'));
+    }
+    const transport = courseTransport({id, city, body});
+    article.append(actions);
+    if (transport) article.append(transport.panel);
+  } else {
+    article.append(anchor);
+    if (type === 3) {
+      const comparison = stayComparison(city);
+      if (comparison) article.append(comparison);
+    }
+  }
+  return article;
+}
+
+function render() {
+  cityButtons.forEach((button,index) => button.setAttribute('aria-pressed',cities[index] === selection.city));
+  typeButtons.forEach((button,index) => button.setAttribute('aria-pressed',index === selection.type));
+  const showingCourses = selection.type === 4;
+  $('course-conditions').hidden = !showingCourses;
+  $('clear-course-conditions').hidden = !activeConditions.size;
+  courseConditions.forEach((condition, index) => {
+    conditionButtons[index].setAttribute('aria-pressed', String(activeConditions.has(condition)));
+  });
+  const requirements = showingCourses ? [...activeConditions] : [];
+  const words = selection.query.split(/\s+/).filter(Boolean);
+  const results = data.filter(item => {
+    const haystack = [item.city,types[item.type],item.title,item.body].flat().join(' ').toLocaleLowerCase('ko');
+    return (!selection.city || item.city === selection.city) &&
+      (!selection.type || item.type === selection.type) &&
+      words.every(word => haystack.includes(word)) &&
+      requirements.every(condition => item.profile && condition.matches(item.profile));
+  });
+  $('summary').textContent = (selection.city || '전체 지역')+' · '+results.length+'건';
+  $('cards').replaceChildren(...(results.length ? results.map(card) :
+    [element('p', requirements.length
+      ? '조건을 모두 만족하는 코스가 없어요. 일부 조건을 해제하거나 지역을 바꿔보세요.'
+      : '검색 결과가 없어요. 지역을 전체로 바꾸거나 검색어를 줄여보세요.', 'empty')]));
+}
+window.addEventListener('pageshow', event => { if (event.persisted) render(); });
+render();

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="여행 경비를 항목별로 입력하고 총액과 1인당 예상 비용을 확인하세요.">
+<title>여행 예산 계산기 | 여행 하루픽</title>
+<link rel="stylesheet" href="./account.css">
+<link rel="stylesheet" href="./budget.css">
+<script type="module" src="./budget.js"></script>
+</head>
+<body>
+<header><div class="wrap"><a class="brand" href="./index.html"><span aria-hidden="true">✧</span>여행 하루픽</a><nav aria-label="주 메뉴"><a href="./index.html">여행 검색</a><a href="./index.html?view=courses#results">추천 코스</a><a href="./my-trip.html">내 여행</a><a aria-current="page" href="./budget.html">예산 계산기</a></nav></div></header>
+<main class="panel budget-panel">
+<h1>여행 예산 계산기</h1>
+<p>여행 전체 기간 동안 일행 모두가 쓸 금액을 원 단위로 입력하세요.</p>
+<noscript><p class="notice">계산기를 사용하려면 자바스크립트를 켜 주세요.</p></noscript>
+<div class="budget-layout">
+<form id="budget-form" aria-label="여행 비용 입력">
+<label for="travelers">여행 인원 <span>(명)</span></label>
+<input id="travelers" type="number" inputmode="numeric" min="1" max="999" step="1" value="1" required>
+<fieldset>
+<legend>항목별 예상 비용</legend>
+<div class="budget-costs">
+<div><label for="transport-cost">교통비</label><input id="transport-cost" data-budget-key="transport" type="number" inputmode="numeric" min="0" max="9999999999" step="1" placeholder="0" data-cost></div>
+<div><label for="stay-cost">숙박비</label><input id="stay-cost" data-budget-key="stay" type="number" inputmode="numeric" min="0" max="9999999999" step="1" placeholder="0" data-cost></div>
+<div><label for="food-cost">식비</label><input id="food-cost" data-budget-key="food" type="number" inputmode="numeric" min="0" max="9999999999" step="1" placeholder="0" data-cost></div>
+<div><label for="entry-cost">입장료</label><input id="entry-cost" data-budget-key="entry" type="number" inputmode="numeric" min="0" max="9999999999" step="1" placeholder="0" data-cost></div>
+</div>
+</fieldset>
+<div class="budget-attach">
+<label for="budget-course">예산을 저장할 일정</label>
+<select id="budget-course"><option value="">일정 선택</option></select>
+<p id="budget-save-status" role="status"></p>
+<div class="actions"><button id="budget-save" type="submit" disabled>일정에 예산 저장</button><button type="reset" class="budget-reset">초기화</button></div>
+</div>
+</form>
+<section class="budget-summary" aria-labelledby="budget-summary-heading">
+<h2 id="budget-summary-heading">예상 여행 비용</h2>
+<div aria-live="polite" aria-atomic="true">
+<dl>
+<div><dt>전체 여행비</dt><dd id="budget-total">0원</dd></div>
+<div><dt>1인당 예상 비용</dt><dd id="budget-per-person">0원</dd></div>
+</dl>
+<p id="budget-feedback">1명 기준 · 1인당 금액은 원 단위로 반올림합니다.</p>
+</div>
+</section>
+</div>
+</main>
+</body>
+</html>

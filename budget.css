@@ -1,0 +1,23 @@
+.budget-panel{width:min(800px,calc(100% - 28px))}
+.budget-layout{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:24px;align-items:start}
+#budget-form>input{width:min(100%,150px);margin:4px 0 16px}
+#budget-form label span{color:var(--muted);font-weight:500}
+#budget-form input:focus-visible{outline:3px solid #268b78;outline-offset:2px}
+#budget-form input[aria-invalid=true]{border-color:#aa2929}
+.budget-costs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:8px}
+.budget-costs input{margin-top:4px}
+.budget-reset{padding:6px 18px;margin-top:16px}
+.budget-summary{background:var(--mint);padding:20px;border-radius:16px;overflow-wrap:anywhere}
+.budget-summary h2{font-size:1.1rem;margin:0 0 12px}
+.budget-summary dl{margin:0}
+.budget-summary dl div+div{border-top:1px solid #c7ddd3;padding-top:10px;margin-top:10px}
+.budget-summary dt{font-size:.9rem;color:var(--muted)}
+.budget-summary dd{margin:0;font-size:clamp(1.2rem,4vw,1.8rem);font-weight:800}
+.budget-summary p{margin:12px 0 0;font-size:.88rem}
+@media(max-width:600px){.budget-layout{grid-template-columns:1fr;gap:20px}}
+.budget-attach{margin-top:18px;padding-top:13px;border-top:1px solid var(--line)}
+.budget-attach select{font:inherit;width:100%;padding:8px;margin-top:4px;border:1px solid var(--line);border-radius:9px;background:white;color:var(--ink)}
+#budget-save-status{font-size:.89rem;margin:8px 0}
+#budget-save-status:empty{display:none}
+.budget-attach .actions{margin-top:8px}
+.budget-attach .budget-reset{margin-top:0}

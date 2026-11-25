@@ -1,0 +1,22 @@
+.day-panel{width:min(600px,calc(100% - 28px))}
+#day-course{font-weight:700}
+#day-progress{margin:12px 0 4px}
+.day-panel progress{width:100%;height:12px;accent-color:var(--green);margin:0 0 12px}
+.day-stop{background:var(--mint);padding:clamp(16px,5vw,24px);border-radius:15px;overflow-wrap:anywhere}
+.day-stop h2{font-size:clamp(1.35rem,6vw,2rem);line-height:1.3;margin:0 0 10px}
+.day-time{font-weight:800;color:var(--green);margin:0 0 5px;font-variant-numeric:tabular-nums}
+#day-note{white-space:pre-wrap}
+.day-stop p:empty,#day-storage:empty,#day-course:empty,#day-progress:empty,.day-maps:empty{display:none}
+.day-maps{display:grid;gap:8px}
+.day-maps a{display:block;text-align:center;border:1px solid #86b7a8;border-radius:10px;background:white;padding:10px;color:var(--green);font-weight:750}
+.day-panel [hidden]{display:none}
+@media(max-width:500px){.day-panel .actions button{width:100%}}
+.day-delay{border:1px solid var(--line);border-radius:12px;margin-top:14px;padding:12px}
+.day-delay summary{color:var(--green);font-weight:750;cursor:pointer}
+.day-delay-controls{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:8px;margin-top:12px}
+.day-delay select{width:100%;min-width:0;padding:8px;border:1px solid var(--line);border-radius:8px;background:white;color:var(--ink);font:inherit}
+.day-delay p{font-size:.9rem;margin:8px 0}
+.day-delay ul{margin:8px 0;padding-left:22px;overflow-wrap:anywhere}
+.day-delay ul:empty{display:none}
+#delay-apply{padding:8px 13px;margin-top:4px}
+@media(max-width:420px){.day-delay-controls{grid-template-columns:1fr}}

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>내 여행 | 여행 하루픽</title>
+<link rel="stylesheet" href="./account.css">
+<script type="module" src="./demo-account.js"></script>
+<link rel="stylesheet" href="./course-transport.css">
+</head>
+<body>
+<header><div class="wrap"><a class="brand" href="./index.html"><span aria-hidden="true">✧</span>여행 하루픽</a><nav aria-label="주 메뉴"><a href="./index.html">여행 검색</a><a href="./my-trip.html" aria-current="page">내 여행</a><a href="./login.html">로그인</a><a href="./signup.html">회원가입</a></nav></div></header>
+<main class="panel">
+<h1>내 여행</h1>
+<section class="today-trips" id="today-trips" aria-labelledby="today-trips-heading" hidden>
+<h2 id="today-trips-heading">오늘 출발하는 일정</h2>
+<ul id="today-trip-list"></ul>
+</section>
+
+<section id="upcoming-trip" class="upcoming-trip" aria-labelledby="upcoming-trip-heading" hidden>
+<h2 id="upcoming-trip-heading">가장 가까운 여행</h2>
+<h3 id="upcoming-trip-title"></h3>
+<p id="upcoming-trip-date" class="upcoming-trip-date"></p>
+<p id="upcoming-trip-status"></p>
+<a id="upcoming-trip-link">일정 카드 보기</a>
+</section>
+<p>저장한 추천 코스를 모아보는 곳이에요.</p>
+<div class="notice"><strong id="trip-status" role="status">로그인 없이 일정을 만들 수 있어요.</strong><p id="trip-detail">일정을 저장하면 같은 브라우저에서 다시 열 수 있어요.</p></div>
+<div class="actions"><a class="primary" href="./index.html?view=courses#results">추천 코스 둘러보기</a><a href="./budget.html">예산 계산기</a><a id="trip-login" href="./login.html">체험 로그인</a><button type="button" id="demo-logout" hidden>로그아웃</button></div>
+<details class="trip-backup">
+<summary>일정 백업·가져오기</summary>
+<p>일정·예산·체크리스트를 한 파일로 내려받을 수 있어요. 같은 일정이 이미 있으면 건너뜁니다.</p>
+<div class="actions"><button type="button" id="backup-download">백업 파일 내려받기</button></div>
+<label for="backup-file">가져올 백업 파일</label>
+<input type="file" id="backup-file" accept=".json,application/json" aria-describedby="backup-feedback">
+<p id="backup-feedback" role="status"></p>
+</details>
+<section id="saved-trips" aria-labelledby="saved-heading"><h2 id="saved-heading" tabindex="-1">내 여행 일정</h2><p id="saved-feedback" role="status"></p><div id="saved-list"></div></section>
+</main>
+</body>
+</html>

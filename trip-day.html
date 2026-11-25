@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>여행 당일 모드 | 여행 하루픽</title>
+<link rel="stylesheet" href="./account.css">
+<link rel="stylesheet" href="./trip-day.css">
+<script type="module" src="./trip-day.js"></script>
+</head>
+<body>
+<header><div class="wrap"><a class="brand" href="./index.html"><span aria-hidden="true">✧</span>여행 하루픽</a><nav aria-label="주 메뉴"><a href="./my-trip.html">내 여행</a></nav></div></header>
+<main class="panel day-panel">
+<h1>여행 당일 모드</h1>
+<p id="day-course"></p>
+<p role="status" id="day-progress"></p>
+<progress id="day-progress-bar" aria-label="방문 완료 진행률" hidden></progress>
+<section id="day-stop" class="day-stop" aria-labelledby="day-stop-title">
+<p id="day-time" class="day-time"></p>
+<h2 id="day-stop-title" tabindex="-1">일정을 불러오고 있어요.</h2>
+<p id="day-note"></p>
+<div class="day-maps" id="day-maps"></div>
+</section>
+<details class="day-delay" id="day-delay" hidden>
+<summary>이후 일정 미루기</summary>
+<div class="day-delay-controls">
+<label for="delay-start">미루기 시작할 장소
+<select id="delay-start"></select>
+</label>
+<label for="delay-minutes">얼마나 미룰까요?
+<select id="delay-minutes"><option value="15">15분</option><option value="30">30분</option></select>
+</label>
+</div>
+<p>방문 시간이 정해진 장소만 미리보기에 표시됩니다.</p>
+<ul id="delay-preview" aria-label="바뀔 방문 시간"></ul>
+<p id="delay-status" role="status"></p>
+<button id="delay-apply" type="button" disabled>변경 시간 적용</button>
+</details>
+<p role="status" id="day-storage"></p>
+<div class="actions">
+<button id="day-next" type="button" hidden>방문 완료 · 다음 장소</button>
+<button id="day-undo" type="button" hidden>마지막 방문 완료 취소</button>
+<a href="./my-trip.html">내 여행 일정 보기</a>
+</div>
+<noscript><p>여행 당일 모드를 사용하려면 자바스크립트를 켜 주세요.</p></noscript>
+</main>
+</body>
+</html>
