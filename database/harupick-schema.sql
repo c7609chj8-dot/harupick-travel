@@ -386,3 +386,143 @@ returns jsonb language sql security invoker set search_path=''
 as $fn$ select harupick_private.trip_action(p_action,p_args); $fn$;
 revoke all on function public.harupick_trip_action(text,jsonb) from public,anon;
 grant execute on function public.harupick_trip_action(text,jsonb) to authenticated;
+
+-- Day 4: database-generated audit records. No historical events are fabricated.
+create table harupick_private.audit_events (
+  id uuid primary key default gen_random_uuid(),
+  occurred_at timestamptz not null default clock_timestamp(),
+  event text not null check(event in ('trip.created','trip.updated','trip.archived','trip.restored','trip.deleted','admin.granted','admin.revoked','admin.removed')),
+  actor_id uuid,
+  actor_type text not null check(actor_type in ('admin','member','system')),
+  actor_label text not null,
+  target_type text not null check(target_type in ('trip','administrator')),
+  target_id uuid not null,
+  target_label text not null,
+  owner_id uuid,
+  changed_fields text[] not null,
+  before_data jsonb,
+  after_data jsonb
+);
+comment on table harupick_private.audit_events is '하루픽 변경 감사 이력. 앱에서 수정·삭제 불가. 비밀번호·토큰·일정 메모·전체 일정 본문은 저장하지 않습니다.';
+create index harupick_audit_time_id_idx on harupick_private.audit_events(occurred_at desc,id desc);
+create index harupick_audit_event_time_idx on harupick_private.audit_events(event,occurred_at desc,id desc);
+create index harupick_audit_target_time_idx on harupick_private.audit_events(target_id,occurred_at desc);
+alter table harupick_private.audit_events enable row level security;
+revoke all on harupick_private.audit_events from public,anon,authenticated,service_role;
+create policy harupick_audit_deny_direct_clients on harupick_private.audit_events
+for all to anon,authenticated using(false) with check(false);
+
+create function harupick_private.capture_audit_event()
+returns trigger language plpgsql security definer set search_path=''
+as $fn$
+declare
+  actor uuid := (select auth.uid());
+  actor_kind text;
+  label text;
+  old_data jsonb;
+  new_data jsonb;
+  old_summary jsonb;
+  new_summary jsonb;
+  keys text[];
+  changed text[];
+  event_name text;
+  target uuid;
+  target_name text;
+  owner uuid;
+  kind text;
+begin
+  if tg_table_schema<>'public' or tg_table_name not in ('harupick_trips','harupick_administrators') then
+    raise exception 'Invalid audit trigger source';
+  end if;
+  if tg_op='UPDATE' and old is not distinct from new then return new; end if;
+  if tg_op<>'INSERT' then old_data:=to_jsonb(old); end if;
+  if tg_op<>'DELETE' then new_data:=to_jsonb(new); end if;
+  actor_kind:=case when actor is null then 'system' when harupick_private.is_current_admin() then 'admin' else 'member' end;
+  select nickname into label from public.harupick_members where id=actor;
+  label:=coalesce(label,case actor_kind when 'system' then '운영 도구' when 'admin' then '관리자' else '회원' end);
+  if tg_table_name='harupick_trips' then
+    kind:='trip';
+    target:=coalesce(new_data->>'id',old_data->>'id')::uuid;
+    target_name:=coalesce(new_data->>'title',old_data->>'title');
+    owner:=coalesce(new_data->>'owner_id',old_data->>'owner_id')::uuid;
+    keys:=array['title','travel_date','status','revision'];
+    if old_data is not null then
+      select jsonb_object_agg(k,old_data->k) into old_summary from unnest(keys) k;
+    end if;
+    if new_data is not null then
+      select jsonb_object_agg(k,new_data->k) into new_summary from unnest(keys) k;
+    end if;
+    select coalesce(array_agg(k order by k),array[]::text[]) into changed from unnest(keys||array['snapshot']) k
+      where old_data->k is distinct from new_data->k;
+    event_name:=case when tg_op='INSERT' then 'trip.created' when tg_op='DELETE' then 'trip.deleted'
+      when old_data->>'status' is distinct from new_data->>'status' and new_data->>'status'='archived' then 'trip.archived'
+      when old_data->>'status'='archived' and new_data->>'status'='active' then 'trip.restored'
+      else 'trip.updated' end;
+  else
+    kind:='administrator';
+    target:=coalesce(new_data->>'user_id',old_data->>'user_id')::uuid;
+    target_name:='관리자 계정 '||target::text;
+    owner:=target;
+    keys:=array['is_active','granted_at'];
+    if old_data is not null then select jsonb_object_agg(k,old_data->k) into old_summary from unnest(keys) k; end if;
+    if new_data is not null then select jsonb_object_agg(k,new_data->k) into new_summary from unnest(keys) k; end if;
+    select coalesce(array_agg(k order by k),array[]::text[]) into changed from unnest(keys) k
+      where old_data->k is distinct from new_data->k;
+    event_name:=case when tg_op='DELETE' then 'admin.removed'
+      when (new_data->>'is_active')::boolean then 'admin.granted' else 'admin.revoked' end;
+  end if;
+  insert into harupick_private.audit_events(event,actor_id,actor_type,actor_label,target_type,target_id,target_label,owner_id,changed_fields,before_data,after_data)
+  values(event_name,actor,actor_kind,label,kind,target,target_name,owner,changed,old_summary,new_summary);
+  if tg_op='DELETE' then return old; end if;
+  return new;
+end;
+$fn$;
+revoke all on function harupick_private.capture_audit_event() from public,anon,authenticated,service_role;
+create trigger harupick_trip_audit after insert or update or delete on public.harupick_trips
+for each row execute function harupick_private.capture_audit_event();
+create trigger harupick_administrator_audit after insert or update or delete on public.harupick_administrators
+for each row execute function harupick_private.capture_audit_event();
+
+create function harupick_private.read_audit(p_query text,p_event text,p_page integer,p_from date,p_until date,p_id uuid)
+returns jsonb language plpgsql stable security definer set search_path=''
+as $fn$
+declare search_text text:=lower(btrim(coalesce(p_query,'')));
+  total_count bigint; page_number integer; page_count integer; rows_json jsonb;
+begin
+  if not harupick_private.is_current_admin() then raise exception 'Administrator access required' using errcode='42501'; end if;
+  if p_id is not null then
+    select to_jsonb(a) into rows_json from harupick_private.audit_events a where a.id=p_id;
+    return rows_json;
+  end if;
+  if char_length(search_text)>100 or p_page is null or p_page<1 or p_page>1000000
+    or p_event is null or p_event not in ('all','trip.created','trip.updated','trip.archived','trip.restored','trip.deleted','admin.granted','admin.revoked','admin.removed')
+    or (p_from is not null and p_until is not null and p_from>p_until) then
+    raise exception 'Invalid audit filters' using errcode='22023';
+  end if;
+  select count(*) into total_count from harupick_private.audit_events a
+  where (p_event='all' or a.event=p_event)
+    and (p_from is null or a.occurred_at >= (p_from::timestamp at time zone 'Asia/Seoul'))
+    and (p_until is null or a.occurred_at < ((p_until+1)::timestamp at time zone 'Asia/Seoul'))
+    and (search_text='' or strpos(lower(a.target_label),search_text)>0 or strpos(lower(a.actor_label),search_text)>0
+      or strpos(a.target_id::text,search_text)>0 or strpos(coalesce(a.actor_id::text,''),search_text)>0);
+  page_count:=greatest(1,ceil(total_count::numeric/20)::integer);
+  page_number:=least(p_page,page_count);
+  select coalesce(jsonb_agg(r.data order by r.occurred_at desc,r.id desc),'[]'::jsonb) into rows_json from (
+    select a.id,a.occurred_at,to_jsonb(a)-'before_data'-'after_data' as data from harupick_private.audit_events a
+    where (p_event='all' or a.event=p_event)
+      and (p_from is null or a.occurred_at >= (p_from::timestamp at time zone 'Asia/Seoul'))
+      and (p_until is null or a.occurred_at < ((p_until+1)::timestamp at time zone 'Asia/Seoul'))
+      and (search_text='' or strpos(lower(a.target_label),search_text)>0 or strpos(lower(a.actor_label),search_text)>0
+        or strpos(a.target_id::text,search_text)>0 or strpos(coalesce(a.actor_id::text,''),search_text)>0)
+    order by a.occurred_at desc,a.id desc limit 20 offset ((page_number-1)::bigint*20)
+  ) r;
+  return jsonb_build_object('events',rows_json,'total',total_count,'page',page_number,'pages',page_count);
+end;
+$fn$;
+revoke all on function harupick_private.read_audit(text,text,integer,date,date,uuid) from public,anon;
+grant execute on function harupick_private.read_audit(text,text,integer,date,date,uuid) to authenticated;
+create function public.harupick_admin_audit(p_query text default '',p_event text default 'all',p_page integer default 1,p_from date default null,p_until date default null,p_id uuid default null)
+returns jsonb language sql stable security invoker set search_path=''
+as $fn$ select harupick_private.read_audit(p_query,p_event,p_page,p_from,p_until,p_id); $fn$;
+revoke all on function public.harupick_admin_audit(text,text,integer,date,date,uuid) from public,anon;
+grant execute on function public.harupick_admin_audit(text,text,integer,date,date,uuid) to authenticated;

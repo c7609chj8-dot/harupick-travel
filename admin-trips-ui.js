@@ -32,6 +32,7 @@ export function setupAdminTrips(onAccessFailure) {
       epoch++; selected = null;
       $('admin-trip-detail').hidden = result.state === 'idle';
       $('admin-trip-fields').replaceChildren(); $('admin-trip-stops').replaceChildren();
+      $('trip-update-title').value = ''; $('trip-update-date').value = ''; $('trip-update-status').value = 'active';
       $('trip-update-form').hidden = true; $('trip-update-message').textContent = '';
       $('trips-detail-retry').hidden = result.state !== 'error';
       const messages = { idle: '', loading: '일정 상세를 불러오고 있습니다.', error: '상세를 불러오지 못했습니다. 다시 조회해 주세요.', missing: '해당 일정을 찾을 수 없습니다.', ready: '제목·여행 날짜·보관 상태를 수정할 수 있습니다.' };
@@ -69,6 +70,7 @@ export function setupAdminTrips(onAccessFailure) {
     try {
       await tripRequest('admin_update', { id: trip.id, revision: trip.revision, title: $('trip-update-title').value.trim(), date: $('trip-update-date').value, status: $('trip-update-status').value });
       if (version !== epoch) return;
+      document.dispatchEvent(new Event('harupick-trip-changed'));
       await load(); $('trips-feedback').textContent = '일정 변경을 저장했습니다. 목록에서 다시 조회할 수 있습니다.';
     } catch (error) {
       if (version !== epoch) return;
