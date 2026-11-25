@@ -13,6 +13,7 @@ const region = $('region');
 const keyword = $('keyword');
 const initialView = new URLSearchParams(window.location.search).get('view');
 const initialType = new Map([['all', 0], ['places', 1], ['transport', 2], ['stays', 3], ['courses', 4]]).get(initialView) ?? 4;
+let visibleCount = 4;
 let selection = { city:'', query:'', type:initialType };
 const activeConditions = new Set();
 const courseConditions = [
@@ -59,7 +60,13 @@ function applySearch() {
   selection.query = keyword.value.trim().toLocaleLowerCase('ko');
   render();
 }
-$('search-form').addEventListener('submit', event => {event.preventDefault(); applySearch(); $('results').scrollIntoView({block:'start'});});
+$('search-form').addEventListener('submit', event => {
+  event.preventDefault();
+  selection.type = 0;
+  activeConditions.clear();
+  applySearch();
+  $('results').scrollIntoView({block:'start'});
+});
 document.querySelectorAll('[data-city]').forEach(button => {
   button.addEventListener('click', () => {
     selection.type = 4;
@@ -140,7 +147,8 @@ function card({id,city,type,title,body,profile,url,link}) {
   return wrapper;
 }
 
-function render() {
+function render(reset = true) {
+  if (reset) visibleCount = 4;
   cityButtons.forEach((button,index) => button.setAttribute('aria-pressed',cities[index] === selection.city));
   typeButtons.forEach((button,index) => button.setAttribute('aria-pressed',index === selection.type));
   const showingCourses = selection.type === 4;
@@ -159,11 +167,52 @@ function render() {
       requirements.every(condition => item.profile && condition.matches(item.profile));
   });
   if (showingCourses) results.sort((a, b) => Number(featuredCourseIds.has(b.id)) - Number(featuredCourseIds.has(a.id)));
+  $('load-more').hidden = results.length <= visibleCount;
+  $('load-more').textContent = '여행 정보 더 보기 (' + Math.min(visibleCount, results.length) + ' / ' + results.length + ')';
   $('summary').textContent = (selection.city || '전체 지역')+' · '+results.length+'건';
-  $('cards').replaceChildren(...(results.length ? results.map(card) :
+  $('cards').replaceChildren(...(results.length ? results.slice(0, visibleCount).map(card) :
     [element('p', requirements.length
       ? '조건을 모두 만족하는 코스가 없어요. 일부 조건을 해제하거나 지역을 바꿔보세요.'
       : '검색 결과가 없어요. 지역을 전체로 바꾸거나 검색어를 줄여보세요.', 'empty')]));
 }
+$('load-more').addEventListener('click', () => {
+  const firstNewIndex = visibleCount;
+  visibleCount += 4;
+  render(false);
+  const firstNewCard = $('cards').children[firstNewIndex];
+  if (firstNewCard) {
+    firstNewCard.tabIndex = -1;
+    firstNewCard.focus({ preventScroll: true });
+    firstNewCard.scrollIntoView({ block: 'nearest' });
+  }
+});
+document.querySelectorAll('[data-condition]').forEach(button => {
+  button.addEventListener('click', () => {
+    selection = { city: '', query: '', type: 4 };
+    region.value = '';
+    keyword.value = '';
+    activeConditions.clear();
+    const condition = courseConditions.find(item => item.label === button.dataset.condition);
+    if (condition) activeConditions.add(condition);
+    render();
+    $('results').scrollIntoView({ block: 'start' });
+  });
+});
+$('close-announcement').addEventListener('click', () => { $('announcement').hidden = true; });
+const posterViewport = $('poster-viewport');
+const posterPrev = $('poster-prev');
+const posterNext = $('poster-next');
+const updatePosterControls = () => {
+  posterPrev.disabled = posterViewport.scrollLeft <= 2;
+  posterNext.disabled = posterViewport.scrollLeft + posterViewport.clientWidth >= posterViewport.scrollWidth - 2;
+};
+const movePosters = direction => {
+  const motion = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth';
+  posterViewport.scrollBy({ left: direction * (posterViewport.querySelector('button').offsetWidth + 18), behavior: motion });
+};
+posterPrev.addEventListener('click', () => movePosters(-1));
+posterNext.addEventListener('click', () => movePosters(1));
+posterViewport.addEventListener('scroll', updatePosterControls, { passive: true });
+new ResizeObserver(updatePosterControls).observe(posterViewport);
 window.addEventListener('pageshow', event => { if (event.persisted) render(); });
 render();
