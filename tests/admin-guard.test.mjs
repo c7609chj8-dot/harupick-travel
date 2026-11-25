@@ -6,3 +6,14 @@ test('a late allowed response cannot reveal content after sign-out',async()=>{co
 test('a newer denial takes precedence over an older allowed response',async()=>{const a=pending(),b=pending(),states=[];let calls=0;const guard=createAdminGuard({check:()=>++calls===1?a.promise:b.promise,onState:s=>states.push(s.state)});const one=guard.refresh(),two=guard.refresh();b.resolve({state:'denied'});await two;a.resolve({state:'allowed'});await one;assert.deepEqual(states,['checking','checking','denied']);});
 test('network failures produce an error state without allowed content',async()=>{const states=[];const guard=createAdminGuard({check:async()=>{throw new Error('offline');},onState:s=>states.push(s.state)});await guard.refresh();assert.deepEqual(states,['checking','error']);});
 test('disposed pages ignore completed access requests',async()=>{const p=pending(),states=[];const guard=createAdminGuard({check:()=>p.promise,onState:s=>states.push(s.state)});const task=guard.refresh();guard.dispose();p.resolve({state:'allowed'});await task;assert.deepEqual(states,['checking']);});
+
+test('background access checks preserve the screen while checking and still deliver denial', async () => {
+  let checkResult = { state: 'allowed' };
+  const states = [];
+  const guard = createAdminGuard({ check: async () => checkResult, onState: state => states.push(state.state) });
+  await guard.refresh();
+  await guard.refresh({ background: true });
+  checkResult = { state: 'denied' };
+  await guard.refresh({ background: true });
+  assert.deepEqual(states, ['checking', 'allowed', 'allowed', 'denied']);
+});

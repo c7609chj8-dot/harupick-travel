@@ -232,3 +232,157 @@ as $function$
 $function$;
 revoke all on function public.harupick_admin_member(uuid) from public, anon;
 grant execute on function public.harupick_admin_member(uuid) to authenticated;
+
+-- Day 3: account-owned trip snapshots, administrator editing and reversible archive.
+create table public.harupick_trips (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references public.harupick_members(id) on delete cascade,
+  local_id text not null check (char_length(local_id) between 1 and 180),
+  title text not null check (char_length(btrim(title)) between 1 and 80),
+  travel_date date,
+  snapshot jsonb not null check (jsonb_typeof(snapshot) = 'object' and octet_length(snapshot::text) <= 65536),
+  status text not null default 'active' check (status in ('active','archived')),
+  revision integer not null default 1 check (revision > 0),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(owner_id,local_id)
+);
+create index harupick_trips_owner_updated_idx on public.harupick_trips(owner_id,updated_at desc,id desc);
+create index harupick_trips_status_updated_idx on public.harupick_trips(status,updated_at desc,id desc);
+alter table public.harupick_trips enable row level security;
+revoke all on public.harupick_trips from public,anon,authenticated;
+grant select on public.harupick_trips to authenticated;
+grant all on public.harupick_trips to service_role;
+
+create function harupick_private.is_current_member()
+returns boolean language sql stable security definer set search_path=''
+as $fn$
+select exists(
+ select 1 from public.harupick_members m join auth.users u on u.id=m.id
+ join auth.sessions s on s.user_id=u.id and s.id=nullif((select auth.jwt())->>'session_id','')::uuid
+ where m.id=(select auth.uid()) and u.email_confirmed_at is not null and u.deleted_at is null
+ and (u.banned_until is null or u.banned_until<=now()) and (s.not_after is null or s.not_after>now())
+);
+$fn$;
+revoke all on function harupick_private.is_current_member() from public,anon;
+grant execute on function harupick_private.is_current_member() to authenticated;
+create policy harupick_trips_read_own on public.harupick_trips for select to authenticated
+using(owner_id=(select auth.uid()) and (select harupick_private.is_current_member()));
+
+create function harupick_private.trip_action(p_action text,p_args jsonb)
+returns jsonb language plpgsql security definer set search_path=''
+as $fn$
+declare
+  admin_action boolean := left(coalesce(p_action,''),6)='admin_';
+  uid uuid := (select auth.uid());
+  row_data public.harupick_trips%rowtype;
+  payload jsonb; result jsonb; search_text text; state_filter text;
+  page_number integer; page_count integer; total_count bigint;
+  title_text text; date_value date; local_key text; expected integer;
+begin
+  if admin_action then
+    if not harupick_private.is_current_admin() then raise exception 'Administrator access required' using errcode='42501'; end if;
+  elsif not harupick_private.is_current_member() then
+    raise exception 'Verified Harupick member with live session required' using errcode='42501';
+  end if;
+  if p_args is null or jsonb_typeof(p_args)<>'object' then raise exception 'Invalid arguments' using errcode='22023'; end if;
+  -- Owner ID is explicit so an account switch cannot redirect a pending write.
+  if not admin_action and (p_args->>'owner_id')::uuid is distinct from uid then
+    raise exception 'Account changed' using errcode='42501';
+  end if;
+
+  if p_action in ('list','admin_list') then
+    search_text:=lower(btrim(coalesce(p_args->>'query','')));
+    state_filter:=coalesce(p_args->>'status','all');
+    page_number:=coalesce((p_args->>'page')::integer,1);
+    if char_length(search_text)>100 or page_number<1 or page_number>1000000 or state_filter not in ('all','active','archived') then
+      raise exception 'Invalid list parameters' using errcode='22023';
+    end if;
+    select count(*) into total_count from public.harupick_trips t
+    join public.harupick_members m on m.id=t.owner_id join auth.users u on u.id=m.id
+    where (admin_action or t.owner_id=uid)
+      and (state_filter='all' or t.status=state_filter)
+      and (search_text='' or strpos(lower(t.title),search_text)>0
+        or (admin_action and (strpos(lower(m.nickname),search_text)>0 or strpos(lower(coalesce(u.email,'')),search_text)>0)));
+    page_count:=greatest(1,ceil(total_count::numeric/20)::integer);
+    page_number:=least(page_number,page_count);
+    select coalesce(jsonb_agg(r.data order by r.updated_at desc,r.id desc),'[]'::jsonb) into result from (
+      select t.id,t.updated_at,
+        jsonb_build_object('id',t.id,'local_id',t.local_id,'title',t.title,'travel_date',t.travel_date,
+          'status',t.status,'revision',t.revision,'updated_at',t.updated_at)
+        || case when admin_action then jsonb_build_object('owner_id',m.id,'nickname',m.nickname,'email',u.email) else '{}'::jsonb end as data
+      from public.harupick_trips t join public.harupick_members m on m.id=t.owner_id join auth.users u on u.id=m.id
+      where (admin_action or t.owner_id=uid) and (state_filter='all' or t.status=state_filter)
+        and (search_text='' or strpos(lower(t.title),search_text)>0
+          or (admin_action and (strpos(lower(m.nickname),search_text)>0 or strpos(lower(coalesce(u.email,'')),search_text)>0)))
+      order by t.updated_at desc,t.id desc limit 20 offset ((page_number-1)::bigint*20)
+    ) r;
+    return jsonb_build_object('trips',result,'total',total_count,'page',page_number,'pages',page_count);
+  elsif p_action in ('get','admin_get') then
+    select * into row_data from public.harupick_trips
+      where id=(p_args->>'id')::uuid and (admin_action or owner_id=uid);
+    if not found then return null; end if;
+    result:=to_jsonb(row_data);
+    if admin_action then
+      select result||jsonb_build_object('nickname',m.nickname,'email',u.email) into result
+      from public.harupick_members m join auth.users u on u.id=m.id where m.id=row_data.owner_id;
+    end if;
+    return result;
+  elsif p_action='save' then
+    local_key:=p_args->>'local_id'; payload:=p_args->'snapshot';
+    title_text:=btrim(p_args->>'title');
+    expected:=(p_args->>'revision')::integer;
+    if local_key is null or char_length(local_key) not between 1 and 180 or title_text is null or char_length(title_text) not between 1 and 80
+       or payload is null or jsonb_typeof(payload)<>'object' or octet_length(payload::text)>65536
+       or (payload->>'id') is distinct from local_key
+       or jsonb_typeof(payload->'itinerary') is distinct from 'object'
+       or jsonb_typeof(payload#>'{itinerary,stops}') is distinct from 'array'
+       or jsonb_typeof(payload->'checklist') is distinct from 'array'
+       or coalesce(jsonb_typeof(payload->'budget'),'missing') not in ('object','null')
+       or jsonb_typeof(payload#>'{itinerary,date}') is distinct from 'string' then
+      raise exception 'Invalid trip snapshot' using errcode='22023';
+    end if;
+    if jsonb_array_length(payload#>'{itinerary,stops}') not between 1 and 60
+      or jsonb_array_length(payload->'checklist')>5 then raise exception 'Invalid trip size' using errcode='22023'; end if;
+    if payload#>>'{itinerary,date}'<>'' and payload#>>'{itinerary,date}' !~ '^\d{4}-\d{2}-\d{2}$' then
+      raise exception 'Invalid date' using errcode='22023';
+    end if;
+    date_value:=nullif(payload#>>'{itinerary,date}','')::date;
+    payload:=jsonb_set(payload,'{itinerary,title}',to_jsonb(title_text));
+    perform pg_advisory_xact_lock(hashtextextended(uid::text||':'||local_key,0));
+    select * into row_data from public.harupick_trips where owner_id=uid and local_id=local_key for update;
+    if found then
+      if expected is distinct from row_data.revision then raise exception 'Trip changed; reload before saving' using errcode='40001'; end if;
+      update public.harupick_trips set title=title_text,travel_date=date_value,snapshot=payload,
+        revision=revision+1,updated_at=clock_timestamp() where id=row_data.id returning * into row_data;
+    else
+      if expected is not null then raise exception 'Trip changed; reload before saving' using errcode='40001'; end if;
+      insert into public.harupick_trips(owner_id,local_id,title,travel_date,snapshot)
+        values(uid,local_key,title_text,date_value,payload) returning * into row_data;
+    end if;
+    return to_jsonb(row_data)-'snapshot';
+  elsif p_action='admin_update' then
+    title_text:=btrim(p_args->>'title'); state_filter:=p_args->>'status';
+    if title_text is null or char_length(title_text) not between 1 and 80 or state_filter is null or state_filter not in ('active','archived')
+       or p_args->>'date' is null or (p_args->>'date'<>'' and p_args->>'date' !~ '^\d{4}-\d{2}-\d{2}$') then
+      raise exception 'Invalid trip update' using errcode='22023';
+    end if;
+    date_value:=nullif(p_args->>'date','')::date;
+    select * into row_data from public.harupick_trips where id=(p_args->>'id')::uuid for update;
+    if not found then raise exception 'Trip not found' using errcode='P0002'; end if;
+    if (p_args->>'revision')::integer is distinct from row_data.revision then raise exception 'Trip changed; reload before saving' using errcode='40001'; end if;
+    update public.harupick_trips set title=title_text,travel_date=date_value,status=state_filter,
+      snapshot=jsonb_set(jsonb_set(snapshot,'{itinerary,title}',to_jsonb(title_text)),'{itinerary,date}',to_jsonb(coalesce(date_value::text,''))),
+      revision=revision+1,updated_at=clock_timestamp() where id=row_data.id returning * into row_data;
+    return to_jsonb(row_data);
+  end if;
+  raise exception 'Unsupported action' using errcode='22023';
+end;
+$fn$;
+revoke all on function harupick_private.trip_action(text,jsonb) from public,anon;
+grant execute on function harupick_private.trip_action(text,jsonb) to authenticated;
+create function public.harupick_trip_action(p_action text,p_args jsonb default '{}'::jsonb)
+returns jsonb language sql security invoker set search_path=''
+as $fn$ select harupick_private.trip_action(p_action,p_args); $fn$;
+revoke all on function public.harupick_trip_action(text,jsonb) from public,anon;
+grant execute on function public.harupick_trip_action(text,jsonb) to authenticated;

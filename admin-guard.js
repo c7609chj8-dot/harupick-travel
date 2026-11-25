@@ -7,10 +7,10 @@ export function createAdminGuard({ check, onState }) {
       generation += 1;
       if (!disposed) onState({ state });
     },
-    async refresh() {
+    async refresh({ background = false } = {}) {
       if (disposed) return;
       const version = ++generation;
-      onState({ state: 'checking' });
+      if (!background) onState({ state: 'checking' });
       try {
         const result = await check();
         if (!disposed && version === generation) onState(result);

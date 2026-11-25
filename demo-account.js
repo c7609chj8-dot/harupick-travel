@@ -1,3 +1,4 @@
+import { setupTripCloud, setCloudAccount, cloudSaveActions } from './trip-cloud-ui.js';
 import { checkAdminAccess } from './admin-access.js';
 import { authClient, getCurrentMember, authError } from './auth-client.js';
 import { organizeTrips, tripGroups } from './trip-order.js';
@@ -27,6 +28,7 @@ async function showTripState() {
     const current = await getCurrentMember();
     if (version !== tripStateVersion) return;
     const signedIn = Boolean(current?.user);
+    setCloudAccount(current?.profile?.id || null);
     document.getElementById('trip-status').textContent = current?.profile
       ? current.profile.nickname + '님으로 로그인했어요.'
       : signedIn ? '로그인했어요. 로그인 화면에서 하루픽 닉네임 등록을 마무리해 주세요.' : '로그인 없이도 일정을 만들 수 있어요.';
@@ -40,6 +42,7 @@ async function showTripState() {
     }
   } catch (error) {
     if (version !== tripStateVersion) return;
+    setCloudAccount(null);
     document.getElementById('trip-status').textContent = authError(error);
     document.getElementById('trip-login').hidden = false;
     logoutButton.hidden = true;
@@ -163,6 +166,8 @@ function renderSavedTrips() {
     const checklist = tripChecklist(course.id);
     checklist.addEventListener('checklistsaved', renderTodayTrips);
     checklist.hidden = !hasSaved;
+    const cloudActions = cloudSaveActions(course);
+    cloudActions.hidden = !hasSaved;
     const share = itineraryShare(course);
     const budget = readTripBudget(course.id);
     const budgetAmount = document.createElement('p');
@@ -178,6 +183,7 @@ function renderSavedTrips() {
     const editor = itineraryEditor(course, () => {
       setCourseSaved(course.id, true);
       renderTodayTrips();
+      cloudActions.hidden = false;
       share.hidden = false;
       exportButton.hidden = false;
       copyForm.hidden = false;
@@ -315,17 +321,18 @@ function renderSavedTrips() {
     secondaryActions.append(exportButton);
     more.append(moreLabel, secondaryActions, exportStatus, share, copyForm);
     if (transport) more.append(transport.panel);
-    card.append(title, date, primaryActions, readiness.panel, editor, stops, timingNote, checklist, budgetAmount, more);
+    card.append(title, date, primaryActions, cloudActions, readiness.panel, editor, stops, timingNote, checklist, budgetAmount, more);
     cards.push({ course, card });
   }
   refreshSavedGroups();
 }
 
 if (logoutButton) {
+  setupTripCloud(renderSavedTrips);
   setupTripBackup(renderSavedTrips);
   renderSavedTrips();
   showTripState();
-  authClient.auth.onAuthStateChange(() => { document.getElementById('admin-entry').hidden = true; setTimeout(showTripState, 0); });
+  authClient.auth.onAuthStateChange(() => { tripStateVersion++; setCloudAccount(null); document.getElementById('admin-entry').hidden = true; setTimeout(showTripState, 0); });
   window.addEventListener('pageshow', event => { if (event.persisted) showTripState(); });
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) { renderTodayTrips(); refreshSavedGroups(); }
