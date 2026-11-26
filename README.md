@@ -17,11 +17,14 @@
 
 ## 운영매뉴얼
 
+문서 1~5일 차 작성·통합 검토 완료. 실제 운영 인수·메일 수신·백업 복구 시험은 별도 확인이 필요합니다.
+
 - [운영 범위·담당 역할·일상 점검 기준과 5일 작성 일정](docs/operations-manual.md)
 - [일상 점검·인계·담당 배정 템플릿](docs/operations-checklist.md)
 - [2일 차 관리자 로그인·회원관리 절차와 오류 대응](docs/operations-accounts.md)
 - [3일 차 일정 수정·보관·복원·감사 이력·대시보드 절차](docs/operations-trips-audit-dashboard.md)
 - [4일 차 배포 확인·장애 진단·복구·되돌리기 절차](docs/operations-deployment-recovery.md)
+- [5일 차 빠른 대응표·통합 검토·인수인계](docs/operations-handover.md)
 
 ## 회원관리 테이블 개선
 
