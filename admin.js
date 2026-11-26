@@ -38,7 +38,7 @@ const guard = createAdminGuard({ check: checkAdminAccess, onState(result) {
     $('admin-checked-at').textContent = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
     gate.hidden = true;
     panel.hidden = false;
-    directory.activate();
+    directory.activate(result.user.id);
     trips.activate();
     audit.activate();
     dashboard.activate();

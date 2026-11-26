@@ -15,7 +15,30 @@ function textNode(tag, text, className) {
   return node;
 }
 export function setupMemberDirectory(onAccessFailure) {
-  let query = '', page = 1, pages = 1, selectedId = null, focusDetail = false;
+  const defaults = () => ({query:'',status:'all',from:'',until:'',sort:'created_desc'});
+  let applied = defaults(), page = 1, pages = 1, selectedId = null, focusDetail = false, lastUserId = null;
+  const readDraft = () => ({query:$('members-query').value.trim(),status:$('members-status').value,from:$('members-from').value,until:$('members-until').value,sort:$('members-sort').value});
+  const filtered = () => Boolean(applied.query || applied.status !== 'all' || applied.from || applied.until);
+  const sortLabel = () => applied.sort === 'created_asc' ? '가입일 오래된 순' : '가입일 최신순';
+  const updateDraft = () => {
+    const draft = readDraft();
+    $('members-draft-message').hidden = Object.keys(applied).every(key=>applied[key] === draft[key]);
+  };
+  const clearValidation = () => {
+    $('members-until').setCustomValidity('');
+    $('members-filter-error').textContent = '';
+    $('members-filter-error').hidden = true;
+  };
+  const resetFilters = () => {
+    applied = defaults(); page = 1; $('members-search').reset(); clearValidation(); updateDraft();
+  };
+  const showApplied = () => {
+    const terms = ['상태: '+(applied.status === 'all' ? '전체' : statusLabel(applied.status))];
+    if (applied.query) terms.unshift('검색어: '+applied.query);
+    terms.push('가입일: '+(applied.from || '시작 제한 없음')+' ~ '+(applied.until || '종료 제한 없음'),sortLabel());
+    $('members-applied').textContent = '적용한 조건 · '+terms.join(' · ');
+    $('members-applied').hidden = false;
+  };
   const controller = createMembersController({
     list: listMembers, detail: getMember, onAccessFailure,
     onList(result) {
@@ -28,15 +51,24 @@ export function setupMemberDirectory(onAccessFailure) {
       $('members-count').textContent = '';
       $('members-range').textContent = '';
       $('members-region').setAttribute('aria-busy', String(result.state === 'loading'));
-      if (result.state === 'idle') { $('members-message').textContent = ''; return; }
+      $('members-created-heading').removeAttribute('aria-sort');
+      $('members-table-caption').textContent = '하루픽 회원 목록 · 한국 시간';
+      if (result.state === 'idle') {
+        $('members-message').textContent = '';
+        $('members-applied').textContent = ''; $('members-applied').hidden = true;
+        return;
+      }
+      showApplied();
       if (result.state === 'loading') { $('members-message').textContent = '회원 목록을 불러오고 있습니다.'; return; }
       if (result.state === 'error') { $('members-message').textContent = '회원 목록을 불러오지 못했습니다. 다시 시도해 주세요.'; return; }
       const data = result.data;
       page = data.page; pages = data.pages;
       const first = (page-1)*data.page_size+1;
       $('members-range').textContent = data.members.length ? first.toLocaleString('ko-KR')+'–'+(first+data.members.length-1).toLocaleString('ko-KR')+'번째 회원 표시' : '';
-      $('members-count').textContent = (query ? '검색 결과 ' : '전체 ') + data.total.toLocaleString('ko-KR') + '명';
-      $('members-message').textContent = data.total ? '가입일 최신순 · 한 페이지 20명 · 시각은 한국 시간 기준' : query ? '검색 결과가 없습니다. 다른 닉네임이나 이메일로 검색해 주세요.' : '아직 하루픽에 등록된 회원이 없습니다.';
+      $('members-count').textContent = (filtered() ? '검색 결과 ' : '전체 ') + data.total.toLocaleString('ko-KR') + '명';
+      $('members-message').textContent = data.total ? sortLabel()+' · 한 페이지 20명 · 시각은 한국 시간 기준' : filtered() ? '조건에 맞는 회원이 없습니다. 검색어나 상태·가입 기간을 변경해 주세요.' : '아직 하루픽에 등록된 회원이 없습니다.';
+      $('members-created-heading').setAttribute('aria-sort',applied.sort === 'created_asc' ? 'ascending' : 'descending');
+      $('members-table-caption').textContent = '하루픽 회원 목록 · '+sortLabel()+' · 한 페이지 20명 · 한국 시간';
       $('members-page').textContent = page + ' / ' + pages + ' 페이지';
       $('members-prev').disabled = page <= 1;
       $('members-next').disabled = page >= pages;
@@ -80,11 +112,23 @@ export function setupMemberDirectory(onAccessFailure) {
       if (focusDetail && result.state !== 'idle') { $('member-detail-title').focus(); focusDetail = false; }
     }
   });
-  const load = () => controller.loadList({ query, page });
+  const load = () => controller.loadList({ ...applied, page });
   $('members-search').addEventListener('submit', event => {
-    event.preventDefault(); query = $('members-query').value.trim(); page = 1; load();
+    event.preventDefault(); clearValidation();
+    const draft = readDraft();
+    const invalidRange = draft.from && draft.until && draft.from > draft.until;
+    $('members-until').setCustomValidity(invalidRange ? '가입 종료일은 시작일과 같거나 이후여야 합니다.' : '');
+    if (!$('members-search').reportValidity()) {
+      $('members-filter-error').textContent = invalidRange ? '가입 종료일은 시작일과 같거나 이후여야 합니다.' : '검색어와 날짜 입력을 확인해 주세요.';
+      $('members-filter-error').hidden = false; return;
+    }
+    applied = draft; page = 1; updateDraft(); load();
   });
-  $('members-reset').addEventListener('click', () => { $('members-query').value = ''; query = ''; page = 1; load(); });
+  $('members-search').addEventListener('input', () => { clearValidation(); updateDraft(); });
+  $('members-search').addEventListener('change', () => { clearValidation(); updateDraft(); });
+  $('members-reset').addEventListener('click', () => {
+    $('members-search').reset(); clearValidation(); applied = defaults(); page = 1; updateDraft(); load();
+  });
   $('members-retry').addEventListener('click', load);
   $('members-refresh').addEventListener('click', load);
   $('members-prev').addEventListener('click', () => { if (page > 1) { page--; load(); } });
@@ -99,10 +143,16 @@ export function setupMemberDirectory(onAccessFailure) {
     controller.closeDetail(); (button || $('members-query')).focus();
   });
   return {
-    activate() { controller.activate(); load(); },
+    activate(userId) {
+      if (lastUserId && lastUserId !== userId) resetFilters();
+      lastUserId = userId;
+      controller.activate(); load();
+    },
     deactivate({ clearSearch = false } = {}) {
       controller.deactivate(); selectedId = null;
-      if (clearSearch) { query = ''; page = 1; $('members-query').value = ''; }
+      if (clearSearch) {
+        resetFilters(); lastUserId = null;
+      }
     }
   };
 }
