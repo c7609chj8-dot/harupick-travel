@@ -44,3 +44,16 @@ test('late permission errors from a replaced request cannot hide the current das
  assert.equal(states.at(-1).data.current,true);assert.deepEqual(failures,[]);
 });
 
+test('selected period survives retries and manual refresh but resets on account deactivation',async()=>{
+ const calls=[];let fail=false;const {controller}=setup(async days=>{calls.push(days);if(fail)throw Error('offline');return {days};});
+ controller.activate();await controller.refresh();await controller.refresh(30);fail=true;await controller.refresh();fail=false;await controller.refresh();controller.deactivate();controller.activate();await controller.refresh();
+ assert.deepEqual(calls,[7,30,30,30,7]);
+});
+test('a slow seven day response cannot replace a newer thirty day period',async()=>{
+ const old=deferred();const {controller,states}=setup(days=>days===7?old.promise:Promise.resolve({days}));controller.activate();
+ const pending=controller.refresh(7);await controller.refresh(30);old.resolve({days:7});await pending;assert.equal(states.at(-1).data.days,30);
+});
+test('invalid selected periods never reach the API or change the retained selection',async()=>{
+ const calls=[];const {controller}=setup(async days=>{calls.push(days);return {days};});controller.activate();await controller.refresh(30);
+ await assert.rejects(controller.refresh(14),TypeError);await controller.refresh();assert.deepEqual(calls,[30,30]);
+});

@@ -20,7 +20,8 @@
 - [1일 차 지표 정의와 화면 구성](docs/admin-dashboard-day1.md)
 - [2일 차 통계 조회 API와 검증 결과](docs/admin-dashboard-day2.md)
 - [3일 차 통계 카드·목록 연결](docs/admin-dashboard-day3.md)
-- 실제 카드·목록·기준 시각·새로고침을 연결했습니다. 기간 선택·추이 차트는 4일 차에 연결합니다.
+- [4일 차 기간 선택·추이 차트](docs/admin-dashboard-day4.md)
+- 실제 카드·목록·기준 시각·새로고침과 최근 7일·30일 추이, 날짜별 수치 표를 연결했습니다.
 
 ## 검증
 
@@ -37,4 +38,3 @@ node scripts/smoke-production.mjs
 - [스키마 참고](database/harupick-schema.sql): 새 데이터베이스용 참고이며 기존 연결 DB에 재실행하지 않습니다.
 
 auth-config.js에는 브라우저용 공개 publishable key만 사용합니다. service-role·secret key를 프런트엔드에 추가하지 않습니다.
-

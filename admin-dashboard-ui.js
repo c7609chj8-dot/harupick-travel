@@ -1,3 +1,4 @@
+import { renderTrendChart } from './admin-dashboard-chart.js';
 import { getDashboard } from './admin-dashboard-client.js';
 import { createDashboardController } from './admin-dashboard-controller.js';
 import { auditEvents } from './admin-audit-client.js';
@@ -22,6 +23,8 @@ export function setupDashboard({ onAccessFailure, openTrip, openAudit }) {
       const state = result.state;
       $('admin-dashboard').dataset.state = state;
       $('admin-dashboard').setAttribute('aria-busy',String(state === 'loading'));
+      $('dashboard-days').disabled = state === 'idle';
+      if (state === 'idle') $('dashboard-days').value = '7';
       $('dashboard-stage').textContent = copy[state][0];
       $('dashboard-status-title').textContent = copy[state][1];
       $('dashboard-status-message').textContent = copy[state][2];
@@ -38,8 +41,34 @@ export function setupDashboard({ onAccessFailure, openTrip, openAudit }) {
       $('dashboard-recent-empty').textContent = message;
       $('dashboard-upcoming-empty').hidden = false;
       $('dashboard-recent-empty').hidden = false;
+      for (const id of ['dashboard-member-chart','dashboard-trip-chart','dashboard-trend-rows']) $(id).replaceChildren();
+      for (const id of ['dashboard-member-total','dashboard-trip-total','dashboard-trend-range']) $(id).textContent = '';
+      $('dashboard-chart-content').hidden = true;
+      $('dashboard-trend-table').hidden = true;
+      if (state === 'idle') $('dashboard-trend-table').open = false;
+      $('dashboard-trend-message').hidden = false;
+      $('dashboard-trend-message').textContent = state === 'loading' ? '선택한 기간의 추이를 집계하고 있습니다.' : state === 'error' ? '추이를 불러오지 못했습니다. 통계 다시 불러오기를 눌러 주세요.' : '관리자 권한 확인 후 추이를 조회합니다.';
+      $('dashboard-member-empty').hidden = true;
+      $('dashboard-trip-empty').hidden = true;
       if (state !== 'ready') return;
       const data = result.data;
+      $('dashboard-days').value = String(data.trend_days);
+      $('dashboard-trend-range').textContent = data.trend_from+' ~ '+data.trend_until+' · 한국 시간';
+      const memberChart = renderTrendChart($('dashboard-member-chart'),data.trends.member_registrations,{id:'dashboard-member-svg',title:'회원 등록 추이',unit:'명',color:'#1b6b55'});
+      const tripChart = renderTrendChart($('dashboard-trip-chart'),data.trends.trip_creations,{id:'dashboard-trip-svg',title:'서버 일정 생성 추이',unit:'개',color:'#a66a36'});
+      $('dashboard-member-total').textContent = '선택 기간 등록 '+memberChart.total.toLocaleString('ko-KR')+'명';
+      $('dashboard-trip-total').textContent = '선택 기간 생성 '+tripChart.total.toLocaleString('ko-KR')+'개';
+      $('dashboard-member-empty').hidden = !memberChart.empty;
+      $('dashboard-trip-empty').hidden = !tripChart.empty;
+      $('dashboard-chart-content').hidden = false;
+      $('dashboard-trend-message').hidden = true;
+      $('dashboard-trend-table').hidden = false;
+      data.trends.member_registrations.forEach((member,index) => {
+        const row = node('tr',''), day = node('th',member.date);
+        day.scope = 'row';
+        row.append(day,node('td',member.count.toLocaleString('ko-KR')+'명'),node('td',data.trends.trip_creations[index].count.toLocaleString('ko-KR')+'개'));
+        $('dashboard-trend-rows').append(row);
+      });
       for (const [id,key,unit] of metrics) $(id).textContent = data.metrics[key].toLocaleString('ko-KR')+unit;
       $('dashboard-trip-breakdown').textContent = '이용 중 '+data.metrics.active_trips.toLocaleString('ko-KR')+'개 · 보관 '+data.metrics.archived_trips.toLocaleString('ko-KR')+'개';
       $('dashboard-asof').dateTime = data.as_of;
@@ -70,6 +99,7 @@ export function setupDashboard({ onAccessFailure, openTrip, openAudit }) {
       }
     }
   });
+  $('dashboard-days').addEventListener('change',()=>controller.refresh(Number($('dashboard-days').value)));
   $('dashboard-refresh').addEventListener('click',()=>controller.refresh());
   $('dashboard-retry').addEventListener('click',()=>controller.refresh());
   document.addEventListener('harupick-trip-changed',()=>controller.refresh());
