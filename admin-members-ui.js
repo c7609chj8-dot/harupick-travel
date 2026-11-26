@@ -16,7 +16,7 @@ function textNode(tag, text, className) {
 }
 export function setupMemberDirectory(onAccessFailure) {
   const defaults = () => ({query:'',status:'all',from:'',until:'',sort:'created_desc'});
-  let applied = defaults(), page = 1, pages = 1, selectedId = null, focusDetail = false, lastUserId = null;
+  let applied = defaults(), page = 1, pages = 1, selectedId = null, focusDetail = false, lastUserId = null, detailContext = null;
   const readDraft = () => ({query:$('members-query').value.trim(),status:$('members-status').value,from:$('members-from').value,until:$('members-until').value,sort:$('members-sort').value});
   const filtered = () => Boolean(applied.query || applied.status !== 'all' || applied.from || applied.until);
   const sortLabel = () => applied.sort === 'created_asc' ? '가입일 오래된 순' : '가입일 최신순';
@@ -86,30 +86,64 @@ export function setupMemberDirectory(onAccessFailure) {
         const action = document.createElement('td');
         const button = textNode('button', '상세 보기');
         button.type = 'button'; button.dataset.memberId = member.id;
+        button.setAttribute('aria-controls','member-detail'); button.setAttribute('aria-expanded','false');
         button.setAttribute('aria-label', member.nickname + ' 회원 상세 보기');
         action.append(button); row.append(action); $('member-rows').append(row);
       }
     },
     onDetail(result) {
       selectedId = result.id || null;
-      $('member-detail').hidden = result.state === 'idle';
-      $('member-detail-fields').replaceChildren();
+      const idle = result.state === 'idle';
+      $('member-detail').hidden = idle;
+      $('member-detail-fields').replaceChildren(); $('member-detail-dates').replaceChildren();
+      $('member-detail-content').hidden = result.state !== 'ready';
+      $('member-detail-name').textContent = '';
+      $('member-detail-context').textContent = '';
       $('member-detail-retry').hidden = result.state !== 'error';
       $('member-detail').setAttribute('aria-busy', String(result.state === 'loading'));
+      for (const button of $('member-rows').querySelectorAll('button[data-member-id]')) {
+        const selected = !idle && button.dataset.memberId === selectedId;
+        button.setAttribute('aria-expanded',String(selected));
+        button.closest('tr').classList.toggle('member-row-selected',selected);
+      }
+      if (idle) { detailContext = null; focusDetail = false; }
+      else if (detailContext) {
+        $('member-detail-name').textContent = detailContext.nickname;
+        $('member-detail-context').textContent = detailContext.page+' / '+detailContext.pages+' 페이지에서 선택';
+      }
       const messages = { idle: '', loading: '회원 정보를 불러오고 있습니다.', missing: '이 회원은 삭제되었거나 하루픽에 등록되어 있지 않습니다.', error: '회원 정보를 불러오지 못했습니다. 다시 시도해 주세요.', ready: '조회 전용 정보입니다.' };
       $('member-detail-message').textContent = messages[result.state];
       if (result.state === 'ready') {
         const member = result.data;
-        const fields = [
-          ['닉네임', member.nickname], ['이메일', member.email || '이메일 없음'],
-          ['회원 ID', member.id], ['계정 상태', statusLabel(member.status)],
-          ['하루픽 가입 시각', date(member.created_at)], ['프로필 수정 시각', date(member.updated_at)],
-          ['이메일 인증 시각', member.email_confirmed_at ? date(member.email_confirmed_at) : '미인증'],
-          ['최근 계정 로그인', date(member.last_sign_in_at)]
-        ];
-        for (const [label, value] of fields) $('member-detail-fields').append(textNode('dt', label), textNode('dd', value));
+        $('member-detail-name').textContent = member.nickname;
+        const fields = [['닉네임',member.nickname],['이메일',member.email || '이메일 없음'],['회원 ID',member.id],['계정 상태',statusLabel(member.status)]];
+        for (const [label,value] of fields) {
+          const valueNode = textNode('dd',value);
+          if (label === '회원 ID') valueNode.className = 'member-id-value';
+          if (label === '계정 상태') {
+            const badge = textNode('span',value,'member-status');
+            badge.dataset.status = Object.hasOwn(statusLabels,member.status) ? member.status : 'unknown';
+            valueNode.replaceChildren(badge);
+          }
+          $('member-detail-fields').append(textNode('dt',label),valueNode);
+        }
+        for (const [label,value,fallback] of [
+          ['하루픽 가입 시각',member.created_at,'기록 없음'],['프로필 수정 시각',member.updated_at,'기록 없음'],
+          ['이메일 인증 시각',member.email_confirmed_at,'미인증'],['최근 계정 로그인',member.last_sign_in_at,'기록 없음']
+        ]) {
+          const valueNode = textNode('dd',fallback);
+          if (typeof value === 'string' && Number.isFinite(Date.parse(value))) {
+            const time = textNode('time',date(value)); time.dateTime = value; valueNode.replaceChildren(time);
+          }
+          $('member-detail-dates').append(textNode('dt',label),valueNode);
+        }
       }
-      if (focusDetail && result.state !== 'idle') { $('member-detail-title').focus(); focusDetail = false; }
+      const title = $('member-detail-title');
+      if (focusDetail && !idle) {
+        title.focus({preventScroll:true}); title.scrollIntoView({behavior:'instant',block:'start',inline:'nearest'}); focusDetail = false;
+      } else if (!idle && result.state !== 'loading' && document.activeElement === title) {
+        title.scrollIntoView({behavior:'instant',block:'start',inline:'nearest'});
+      }
     }
   });
   const load = () => controller.loadList({ ...applied, page });
@@ -135,12 +169,25 @@ export function setupMemberDirectory(onAccessFailure) {
   $('members-next').addEventListener('click', () => { if (page < pages) { page++; load(); } });
   $('member-rows').addEventListener('click', event => {
     const button = event.target.closest('button[data-member-id]');
-    if (button) { focusDetail = true; controller.loadDetail(button.dataset.memberId); }
+    if (button) {
+      detailContext = {trigger:button,nickname:button.closest('tr').querySelector('th').textContent,page,pages};
+      focusDetail = true; controller.loadDetail(button.dataset.memberId);
+    }
   });
-  $('member-detail-retry').addEventListener('click', () => { if (selectedId) controller.loadDetail(selectedId); });
-  $('member-detail-close').addEventListener('click', () => {
-    const button = [...$('member-rows').querySelectorAll('button')].find(item => item.dataset.memberId === selectedId);
-    controller.closeDetail(); (button || $('members-query')).focus();
+  $('member-detail-retry').addEventListener('click', () => {
+    if (selectedId) { focusDetail = true; controller.loadDetail(selectedId); }
+  });
+  const closeDetail = () => {
+    const trigger = detailContext?.trigger;
+    const button = trigger?.isConnected ? trigger : [...$('member-rows').querySelectorAll('button')].find(item=>item.dataset.memberId === selectedId);
+    controller.closeDetail();
+    const target = button || $('members-query');
+    target.focus({preventScroll:true}); target.scrollIntoView({behavior:'instant',block:'center',inline:'nearest'});
+  };
+  $('member-detail-close').addEventListener('click',closeDetail);
+  $('member-detail-back').addEventListener('click',closeDetail);
+  $('member-detail').addEventListener('keydown',event=>{
+    if (event.key === 'Escape') { event.preventDefault(); closeDetail(); }
   });
   return {
     activate(userId) {

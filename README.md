@@ -20,6 +20,7 @@
 - [1일 차 표시 기준·화면 구성과 5일 일정](docs/admin-members-day1.md)
 - [2일 차 상태·가입 기간 필터와 정렬 API](docs/admin-members-day2.md)
 - [3일 차 필터·정렬 화면과 적용 조건 요약](docs/admin-members-day3.md)
+- [4일 차 상세 정보·목록 복귀·키보드 조작](docs/admin-members-day4.md)
 
 ## 대시보드 개발
 
