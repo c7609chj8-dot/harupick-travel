@@ -24,6 +24,7 @@ const endpoints=[
  ['harupick_admin_context',{}],
  ['harupick_admin_dashboard',{p_days:7}],
  ['harupick_admin_members',{}],
+ ['harupick_admin_members_filtered',{}],
  ['harupick_admin_member',{p_member_id:'00000000-0000-4000-8000-000000000000'}],
  ['harupick_trip_action',{p_action:'admin_list',p_args:{}}],
  ['harupick_admin_audit',{}]

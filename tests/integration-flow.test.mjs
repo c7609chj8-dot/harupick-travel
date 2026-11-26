@@ -25,7 +25,7 @@ globalThis.fetch=async(input,init={})=>{
  if(url.pathname.endsWith('/logout'))return new Response(null,{status:204});
  if(url.pathname==='/rest/v1/harupick_members')return json(profile?[profile]:[]);
  if(url.pathname.endsWith('/harupick_admin_context'))return json({user_id:user.id,role:'admin',capabilities:['access_admin_console']});
- if(url.pathname.endsWith('/harupick_admin_members'))return json({members:[{...profile,email:user.email,email_confirmed:true,status:'active'}],total:1,page:1,pages:1,page_size:20});
+ if(url.pathname.endsWith('/harupick_admin_members_filtered'))return json({members:[{id:profile.id,nickname:profile.nickname,created_at:profile.created_at,email:user.email,email_confirmed:true,status:'active'}],total:1,page:1,pages:1,page_size:20});
  if(url.pathname.endsWith('/harupick_admin_member'))return json({...profile,email:user.email,email_confirmed_at:user.email_confirmed_at,last_sign_in_at:user.created_at,status:'active'});
  if(url.pathname.endsWith('/harupick_trip_action')){
    const args=body.p_args;

@@ -18,6 +18,7 @@
 ## 회원관리 테이블 개선
 
 - [1일 차 표시 기준·화면 구성과 5일 일정](docs/admin-members-day1.md)
+- [2일 차 상태·가입 기간 필터와 정렬 API](docs/admin-members-day2.md)
 
 ## 대시보드 개발
 
