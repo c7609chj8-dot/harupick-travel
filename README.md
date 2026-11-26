@@ -19,6 +19,7 @@
 
 - [운영 범위·담당 역할·일상 점검 기준과 5일 작성 일정](docs/operations-manual.md)
 - [일상 점검·인계·담당 배정 템플릿](docs/operations-checklist.md)
+- [2일 차 관리자 로그인·회원관리 절차와 오류 대응](docs/operations-accounts.md)
 
 ## 회원관리 테이블 개선
 
