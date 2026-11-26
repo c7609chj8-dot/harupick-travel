@@ -21,6 +21,7 @@
 - [2일 차 상태·가입 기간 필터와 정렬 API](docs/admin-members-day2.md)
 - [3일 차 필터·정렬 화면과 적용 조건 요약](docs/admin-members-day3.md)
 - [4일 차 상세 정보·목록 복귀·키보드 조작](docs/admin-members-day4.md)
+- [5일 차 회원관리 통합 검증과 운영 점검](docs/admin-members-day5.md)
 
 ## 대시보드 개발
 
@@ -41,7 +42,8 @@ node --test tests/*.test.mjs
 node scripts/smoke-production.mjs
 ```
 
-- [대시보드 포함 최신 통합 검증](docs/admin-dashboard-day5.md)
+- [회원관리 최신 통합 검증](docs/admin-members-day5.md)
+- [대시보드 통합 검증](docs/admin-dashboard-day5.md)
 - [기존 관리자 검증 결과와 남은 사항](docs/admin-release-verification.md)
 - [DB 보안 검증 방법](database/tests/README.md)
 - [스키마 참고](database/harupick-schema.sql): 새 데이터베이스용 참고이며 기존 연결 DB에 재실행하지 않습니다.
