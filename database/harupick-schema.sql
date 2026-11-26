@@ -526,3 +526,94 @@ returns jsonb language sql stable security invoker set search_path=''
 as $fn$ select harupick_private.read_audit(p_query,p_event,p_page,p_from,p_until,p_id); $fn$;
 revoke all on function public.harupick_admin_audit(text,text,integer,date,date,uuid) from public,anon;
 grant execute on function public.harupick_admin_audit(text,text,integer,date,date,uuid) to authenticated;
+
+-- Dashboard day 2: read-only aggregate API. All values share one snapshot and cutoff.
+create function harupick_private.dashboard(p_days integer)
+returns jsonb language plpgsql stable security definer set search_path=''
+as $fn$
+declare
+  cutoff timestamptz := statement_timestamp();
+  korea_today date := (cutoff at time zone 'Asia/Seoul')::date;
+  first_day date;
+  result jsonb;
+begin
+  if not harupick_private.is_current_admin() then
+    raise exception 'Administrator access required' using errcode='42501';
+  end if;
+  if p_days is null or p_days not in (7,30) then
+    raise exception 'Trend days must be 7 or 30' using errcode='22023';
+  end if;
+  first_day := korea_today - (p_days-1);
+  with
+  eligible_members as materialized (
+    select m.id,m.nickname,m.created_at,u.email_confirmed_at is not null as confirmed
+    from public.harupick_members m join auth.users u on u.id=m.id
+    where u.deleted_at is null
+  ),
+  registered as materialized (
+    select id,created_at from eligible_members where confirmed
+  ),
+  trips as materialized (
+    select t.id,t.title,t.travel_date,t.status,t.created_at,m.nickname
+    from public.harupick_trips t join eligible_members m on m.id=t.owner_id
+  ),
+  trip_counts as (
+    select count(*) as total,
+      count(*) filter(where status='active') as active,
+      count(*) filter(where status='archived') as archived,
+      count(*) filter(where status='active' and travel_date>=korea_today and travel_date<korea_today+30) as upcoming
+    from trips
+  ),
+  days as (
+    select first_day+i as day from generate_series(0,p_days-1) i
+  ),
+  member_daily as (
+    select (created_at at time zone 'Asia/Seoul')::date as day,count(*) as amount from registered
+    where created_at >= (first_day::timestamp at time zone 'Asia/Seoul') and created_at<=cutoff
+    group by 1
+  ),
+  trip_daily as (
+    select (created_at at time zone 'Asia/Seoul')::date as day,count(*) as amount from trips
+    where created_at >= (first_day::timestamp at time zone 'Asia/Seoul') and created_at<=cutoff
+    group by 1
+  ),
+  upcoming as (
+    select id,title,travel_date,nickname from trips
+    where status='active' and travel_date>=korea_today and travel_date<korea_today+30
+    order by travel_date,id limit 5
+  ),
+  recent as (
+    select id,event,occurred_at,actor_label,actor_type,target_label
+    from harupick_private.audit_events where occurred_at<=cutoff
+    order by occurred_at desc,id desc limit 5
+  )
+  select jsonb_build_object(
+    'as_of',cutoff,'timezone','Asia/Seoul','trend_days',p_days,
+    'trend_from',first_day,'trend_until',korea_today,
+    'metrics',jsonb_build_object(
+      'registered_members',(select count(*) from registered),
+      'total_trips',c.total,'active_trips',c.active,'archived_trips',c.archived,
+      'upcoming_trips_30d',c.upcoming,
+      'changes_7d',(select count(*) from harupick_private.audit_events
+        where occurred_at>=((korea_today-6)::timestamp at time zone 'Asia/Seoul') and occurred_at<=cutoff)
+    ),
+    'upcoming_trips',(select coalesce(jsonb_agg(to_jsonb(u) order by u.travel_date,u.id),'[]'::jsonb) from upcoming u),
+    'recent_changes',(select coalesce(jsonb_agg(to_jsonb(r) order by r.occurred_at desc,r.id desc),'[]'::jsonb) from recent r),
+    'trends',jsonb_build_object(
+      'member_registrations',(select jsonb_agg(jsonb_build_object('date',d.day,'count',coalesce(m.amount,0)) order by d.day)
+        from days d left join member_daily m on m.day=d.day),
+      'trip_creations',(select jsonb_agg(jsonb_build_object('date',d.day,'count',coalesce(t.amount,0)) order by d.day)
+        from days d left join trip_daily t on t.day=d.day)
+    )
+  ) into result from trip_counts c;
+  return result;
+end;
+$fn$;
+revoke all on function harupick_private.dashboard(integer) from public,anon;
+grant execute on function harupick_private.dashboard(integer) to authenticated;
+
+create function public.harupick_admin_dashboard(p_days integer default 7)
+returns jsonb language sql stable security invoker set search_path=''
+as $fn$ select harupick_private.dashboard(p_days); $fn$;
+revoke all on function public.harupick_admin_dashboard(integer) from public,anon;
+grant execute on function public.harupick_admin_dashboard(integer) to authenticated;

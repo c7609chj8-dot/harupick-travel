@@ -22,6 +22,7 @@ for (let offset=0; offset<paths.length; offset+=6) {
 }
 const endpoints=[
  ['harupick_admin_context',{}],
+ ['harupick_admin_dashboard',{p_days:7}],
  ['harupick_admin_members',{}],
  ['harupick_admin_member',{p_member_id:'00000000-0000-4000-8000-000000000000'}],
  ['harupick_trip_action',{p_action:'admin_list',p_args:{}}],
@@ -35,5 +36,5 @@ const settingsResponse=await fetch(supabaseUrl+'/auth/v1/settings',{headers:{api
 const settings=await settingsResponse.json();
 if (!settingsResponse.ok || !settings.external?.email || settings.disable_signup || settings.mailer_autoconfirm) failures.push('Auth email signup/login/confirmation configuration differs from the verified flow');
 if (failures.length) { failures.forEach(message=>console.error(message)); process.exitCode=1; }
-else console.log('PASS: '+paths.length+' production pages/assets returned HTTP 200; 5 protected RPCs denied anonymous access; email signup/login and confirmation configuration verified.');
+else console.log('PASS: '+paths.length+' production pages/assets returned HTTP 200; '+endpoints.length+' protected RPCs denied anonymous access; email signup/login and confirmation configuration verified.');
 
