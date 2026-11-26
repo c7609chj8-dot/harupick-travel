@@ -1,0 +1,11 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {createRecoveryController} from '../password-recovery-controller.js';
+const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no});return {promise,resolve,reject};};
+test('recovery arriving after initial rendering schedules validation outside the SDK auth callback',async()=>{
+ const jobs=[],states=[];let calls=0;const controller=createRecoveryController({validate:async()=>{calls++;},onState:s=>states.push(s.state),schedule:job=>jobs.push(job)});
+ controller.handleAuthEvent('PASSWORD_RECOVERY');assert.equal(calls,0);assert.equal(states.length,0);jobs.shift()();await Promise.resolve();assert.deepEqual(states,['checking','password']);
+});
+test('logout wins over an unfinished recovery validation',async()=>{const pending=deferred(),states=[];const controller=createRecoveryController({validate:()=>pending.promise,onState:s=>states.push(s.state)});const done=controller.check();controller.handleAuthEvent('SIGNED_OUT');pending.resolve();await done;assert.deepEqual(states,['checking','request']);});
+test('ordinary sign-in never opens the password form and replaces an active recovery',async()=>{const states=[];const controller=createRecoveryController({validate:async()=>{},onState:s=>states.push(s.state)});controller.handleAuthEvent('SIGNED_IN');assert.deepEqual(states,[]);await controller.check();controller.handleAuthEvent('SIGNED_IN');assert.deepEqual(states,['checking','password','request']);});
+test('manual recheck distinguishes missing recovery from a verified session',async()=>{let allowed=false;const states=[];const controller=createRecoveryController({validate:async()=>{if(!allowed)throw Error('No recovery');},onState:s=>states.push(s.state)});await controller.check();allowed=true;await controller.check();assert.deepEqual(states,['checking','error','checking','password']);});
+test('a disposed reset page ignores queued recovery notifications',()=>{const jobs=[],states=[];const controller=createRecoveryController({validate:async()=>{},onState:s=>states.push(s.state),schedule:job=>jobs.push(job)});controller.handleAuthEvent('PASSWORD_RECOVERY');controller.dispose();jobs.shift()();assert.deepEqual(states,[]);});

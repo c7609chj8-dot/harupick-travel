@@ -1,3 +1,4 @@
+import { createRecoveryController } from './password-recovery-controller.js';
 import { authClient, authReady, hasAuthCallback, isRecoverySession, clearRecoverySession, updateRecoveredPassword, clearAuthCallback, authError, getCurrentMember, createMember, recoveryUrl } from './auth-client.js';
 
 const $ = id => document.getElementById(id);
@@ -105,23 +106,46 @@ if ($('reset-request-form')) {
     $('reset-origin-link').href = recoveryUrl;
     message('reset-status', '이 주소에서는 재설정을 요청할 수 없습니다. 아래 공식 주소에서 메일을 요청하고 같은 브라우저에서 링크를 열어 주세요.', true);
   }
-  if (hasAuthCallback || isRecoverySession()) {
-    requestFields.disabled = true;
-    message('reset-status', '재설정 링크를 확인하고 있습니다.');
-    try {
+  let recoveryState = 'request';
+  const recovery = createRecoveryController({
+    validate: async () => {
       const ready = await authReady;
       if (ready.error) throw ready.error;
       const { data: { user }, error } = await authClient.auth.getUser();
       if (error || !user || !isRecoverySession(user.id)) throw error || new Error('Recovery session required');
-      requestForm.hidden = true;
-      passwordForm.hidden = false;
-      passwordFields.disabled = false;
-      message('reset-status', '새 비밀번호를 입력해 주세요.');
-    } catch {
-      clearRecoverySession();
-      message('reset-status', '재설정 인증을 확인하지 못했습니다. 메일을 요청한 브라우저에서 최신 링크를 열어 주세요. 메일 앱이 다른 브라우저를 열었다면 링크 주소를 복사해 요청한 브라우저의 주소창에 붙여 넣으세요. 링크가 만료됐다면 잠시 후 새 링크를 요청해 주세요.', true);
-      requestFields.disabled = !correctOrigin;
-    } finally { clearAuthCallback(); }
+    },
+    onState: ({ state }) => {
+      recoveryState = state;
+      const password = state === 'password';
+      requestForm.hidden = password;
+      passwordForm.hidden = !password;
+      passwordFields.disabled = !password;
+      requestFields.disabled = state === 'checking' || password || !correctOrigin;
+      $('reset-check').hidden = password || !correctOrigin;
+      if (state === 'checking') message('reset-status', '메일 인증 상태를 확인하고 있습니다.');
+      if (password) {
+        message('reset-status', '메일 인증이 확인됐습니다. 아래에서 새 비밀번호를 입력해 주세요.');
+        $('new-password').focus();
+      }
+      if (state === 'request') {
+        passwordForm.reset();
+        message('reset-status', '재설정 인증이 종료됐습니다. 본인 이메일의 유효한 재설정 링크를 열어 주세요.');
+      }
+      if (state === 'error') {
+        clearRecoverySession();
+        message('reset-status', '아직 재설정 인증을 확인하지 못했습니다. 메일의 최신 링크를 요청한 브라우저에서 열고 이 화면으로 돌아오면 ‘메일 인증 후 계속’을 눌러 주세요. 다른 브라우저가 열렸다면 링크 주소를 복사해 원래 브라우저 주소창에 붙여 넣으세요. 만료·사용된 링크는 다시 요청해야 합니다.', true);
+      }
+    }
+  });
+  const { data: { subscription } } = authClient.auth.onAuthStateChange(event => recovery.handleAuthEvent(event));
+  const checkRecovery = () => { if (isRecoverySession()) recovery.check(); };
+  window.addEventListener('focus', checkRecovery);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkRecovery(); });
+  window.addEventListener('pagehide', event => { if (!event.persisted) { subscription.unsubscribe(); recovery.dispose(); } });
+  $('reset-check').addEventListener('click', () => recovery.check());
+  if (hasAuthCallback || isRecoverySession()) {
+    await recovery.check();
+    clearAuthCallback();
   }
   requestForm.addEventListener('submit', async event => {
     event.preventDefault();
@@ -130,9 +154,13 @@ if ($('reset-request-form')) {
     try {
       const { error } = await authClient.auth.resetPasswordForEmail($('reset-email').value.trim(), { redirectTo: recoveryUrl });
       if (error) throw error;
-      message('reset-status', '등록된 이메일이라면 재설정 안내가 발송됩니다. 이 브라우저에서 최신 메일 링크를 열어 주세요. 메일함과 스팸함을 확인하고, 메일이 오는 동안 다시 요청하지 마세요.');
-    } catch (error) { message('reset-status', authError(error), true); }
-    finally { busy(requestForm, requestFields, false); }
+      if (recoveryState !== 'password' && recoveryState !== 'checking') message('reset-status', '등록된 이메일이라면 재설정 안내가 발송됩니다. 이 브라우저에서 최신 메일 링크를 열어 주세요. 메일 인증 후 원래 화면에 머문다면 ‘메일 인증 후 계속’을 눌러 주세요. 메일이 오는 동안 다시 요청하지 마세요.');
+    } catch (error) {
+      if (recoveryState !== 'password' && recoveryState !== 'checking') message('reset-status', authError(error), true);
+    } finally {
+      busy(requestForm, requestFields, false);
+      requestFields.disabled = !correctOrigin || recoveryState === 'password' || recoveryState === 'checking';
+    }
   });
   passwordForm.addEventListener('submit', async event => {
     event.preventDefault();
