@@ -1,3 +1,4 @@
+import { setupDashboard } from './admin-dashboard-ui.js';
 import { setupAuditHistory } from './admin-audit-ui.js';
 import { setupAdminTrips } from './admin-trips-ui.js';
 import { setupMemberDirectory } from './admin-members-ui.js';
@@ -17,6 +18,7 @@ const copy = {
 const directory = setupMemberDirectory(state => guard.invalidate(state));
 const trips = setupAdminTrips(state => guard.invalidate(state));
 const audit = setupAuditHistory(state => guard.invalidate(state));
+const dashboard = setupDashboard({ onAccessFailure: state => guard.invalidate(state), openTrip: id => trips.open(id), openAudit: id => audit.open(id) });
 const guard = createAdminGuard({ check: checkAdminAccess, onState(result) {
   if (result.state === 'allowed' && allowedUserId === result.user.id && !panel.hidden) {
     $('admin-checked-at').textContent = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
@@ -27,6 +29,7 @@ const guard = createAdminGuard({ check: checkAdminAccess, onState(result) {
   directory.deactivate({ clearSearch: !['checking', 'allowed'].includes(result.state) });
   trips.deactivate({ clearSearch: !['checking', 'allowed'].includes(result.state) });
   audit.deactivate({ clearSearch: !['checking', 'allowed'].includes(result.state) });
+  dashboard.deactivate();
   $('admin-email').textContent = '';
   gate.hidden = false;
   if (result.state === 'allowed') {
@@ -38,6 +41,7 @@ const guard = createAdminGuard({ check: checkAdminAccess, onState(result) {
     directory.activate();
     trips.activate();
     audit.activate();
+    dashboard.activate();
     return;
   }
   const state = copy[result.state] ? result.state : 'error';

@@ -84,6 +84,7 @@ export function setupAuditHistory(onAccessFailure) {
   });
   document.addEventListener('harupick-trip-changed',load);
   return {
+    open(id) { focusDetail = true; return controller.loadDetail(id); },
     activate() { controller.activate(); load(); },
     deactivate({ clearSearch = false } = {}) {
       controller.deactivate();

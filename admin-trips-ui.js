@@ -80,6 +80,10 @@ export function setupAdminTrips(onAccessFailure) {
     } finally { if (version === epoch) $('trip-update-submit').disabled = false; }
   });
   return {
+    async open(id) {
+      await controller.loadDetail(id);
+      if (!$('admin-trip-detail').hidden) $('admin-trip-detail-title').focus();
+    },
     activate() { controller.activate(); load(); },
     deactivate({ clearSearch = false } = {}) {
       controller.deactivate(); $('trips-feedback').textContent = '';
