@@ -21,6 +21,7 @@
 - [2일 차 통계 조회 API와 검증 결과](docs/admin-dashboard-day2.md)
 - [3일 차 통계 카드·목록 연결](docs/admin-dashboard-day3.md)
 - [4일 차 기간 선택·추이 차트](docs/admin-dashboard-day4.md)
+- [5일 차 통합 검증과 운영 점검](docs/admin-dashboard-day5.md)
 - 실제 카드·목록·기준 시각·새로고침과 최근 7일·30일 추이, 날짜별 수치 표를 연결했습니다.
 
 ## 검증
@@ -33,7 +34,8 @@ node --test tests/*.test.mjs
 node scripts/smoke-production.mjs
 ```
 
-- [최종 검증 결과와 남은 사항](docs/admin-release-verification.md)
+- [대시보드 포함 최신 통합 검증](docs/admin-dashboard-day5.md)
+- [기존 관리자 검증 결과와 남은 사항](docs/admin-release-verification.md)
 - [DB 보안 검증 방법](database/tests/README.md)
 - [스키마 참고](database/harupick-schema.sql): 새 데이터베이스용 참고이며 기존 연결 DB에 재실행하지 않습니다.
 
