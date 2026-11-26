@@ -1,4 +1,4 @@
-import { authClient, authReady, hasAuthCallback, isRecoverySession, clearAuthCallback, authError, getCurrentMember, createMember, recoveryUrl } from './auth-client.js';
+import { authClient, authReady, hasAuthCallback, isRecoverySession, clearRecoverySession, updateRecoveredPassword, clearAuthCallback, authError, getCurrentMember, createMember, recoveryUrl } from './auth-client.js';
 
 const $ = id => document.getElementById(id);
 function message(id, text, failed = false) {
@@ -97,22 +97,30 @@ if ($('reset-request-form')) {
   const requestFields = $('reset-request-fields');
   const passwordForm = $('new-password-form');
   const passwordFields = $('new-password-fields');
-  requestFields.disabled = false;
-  if (hasAuthCallback) {
+  const canonicalRecoveryOrigin = new URL(recoveryUrl).origin;
+  const correctOrigin = location.origin === canonicalRecoveryOrigin;
+  requestFields.disabled = !correctOrigin;
+  if (!correctOrigin) {
+    $('reset-origin-help').hidden = false;
+    $('reset-origin-link').href = recoveryUrl;
+    message('reset-status', '이 주소에서는 재설정을 요청할 수 없습니다. 아래 공식 주소에서 메일을 요청하고 같은 브라우저에서 링크를 열어 주세요.', true);
+  }
+  if (hasAuthCallback || isRecoverySession()) {
     requestFields.disabled = true;
     message('reset-status', '재설정 링크를 확인하고 있습니다.');
     try {
       const ready = await authReady;
       if (ready.error) throw ready.error;
       const { data: { user }, error } = await authClient.auth.getUser();
-      if (error || !user || !isRecoverySession()) throw error || new Error('Recovery session required');
+      if (error || !user || !isRecoverySession(user.id)) throw error || new Error('Recovery session required');
       requestForm.hidden = true;
       passwordForm.hidden = false;
       passwordFields.disabled = false;
       message('reset-status', '새 비밀번호를 입력해 주세요.');
     } catch {
-      message('reset-status', '재설정 링크가 만료됐거나 다른 브라우저에서 열렸어요. 새 링크를 요청해 주세요.', true);
-      requestFields.disabled = false;
+      clearRecoverySession();
+      message('reset-status', '재설정 인증을 확인하지 못했습니다. 메일을 요청한 브라우저에서 최신 링크를 열어 주세요. 메일 앱이 다른 브라우저를 열었다면 링크 주소를 복사해 요청한 브라우저의 주소창에 붙여 넣으세요. 링크가 만료됐다면 잠시 후 새 링크를 요청해 주세요.', true);
+      requestFields.disabled = !correctOrigin;
     } finally { clearAuthCallback(); }
   }
   requestForm.addEventListener('submit', async event => {
@@ -122,7 +130,7 @@ if ($('reset-request-form')) {
     try {
       const { error } = await authClient.auth.resetPasswordForEmail($('reset-email').value.trim(), { redirectTo: recoveryUrl });
       if (error) throw error;
-      message('reset-status', '등록된 이메일이라면 재설정 안내가 발송됩니다. 메일함과 스팸함을 확인해 주세요.');
+      message('reset-status', '등록된 이메일이라면 재설정 안내가 발송됩니다. 이 브라우저에서 최신 메일 링크를 열어 주세요. 메일함과 스팸함을 확인하고, 메일이 오는 동안 다시 요청하지 마세요.');
     } catch (error) { message('reset-status', authError(error), true); }
     finally { busy(requestForm, requestFields, false); }
   });
@@ -140,8 +148,7 @@ if ($('reset-request-form')) {
     }
     busy(passwordForm, passwordFields, true);
     try {
-      const { error } = await authClient.auth.updateUser({ password });
-      if (error) throw error;
+      await updateRecoveredPassword(password);
       passwordForm.reset();
       passwordForm.hidden = true;
       const { error: signOutError } = await authClient.auth.signOut({ scope: 'local' });
